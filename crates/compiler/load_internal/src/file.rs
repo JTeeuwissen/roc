@@ -30,7 +30,6 @@ use roc_module::symbol::{
     IdentIds, IdentIdsByModule, Interns, ModuleId, ModuleIds, PQModuleName, PackageModuleIds,
     PackageQualified, Symbol,
 };
-use roc_mono::inc_dec;
 use roc_mono::ir::{
     CapturedSymbols, ExternalSpecializations, GlueLayouts, LambdaSetId, PartialProc, Proc,
     ProcLayout, Procs, ProcsBase, UpdateModeIds,
@@ -40,6 +39,7 @@ use roc_mono::layout::{
     GlobalLayoutInterner, LambdaName, Layout, LayoutCache, LayoutProblem, Niche, STLayoutInterner,
 };
 use roc_mono::reset_reuse;
+use roc_mono::{drop_specialization, inc_dec};
 use roc_packaging::cache::RocCacheDir;
 use roc_parse::ast::{
     self, CommentOrNewline, Defs, Expr, ExtractSpaces, Pattern, Spaced, StrLiteral, TypeAnnotation,
@@ -3120,6 +3120,15 @@ fn update<'a>(
                     );
 
                     debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_RESET_REUSE);
+
+                    drop_specialization::specialize_drops(
+                        arena,
+                        &layout_interner,
+                        module_id,
+                        ident_ids,
+                        &mut update_mode_ids,
+                        &mut state.procedures,
+                    );
 
                     // This is not safe with the new non-recursive RC updates that we do for tag unions
                     //

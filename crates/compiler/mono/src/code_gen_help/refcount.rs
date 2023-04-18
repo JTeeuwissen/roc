@@ -357,12 +357,16 @@ pub fn refcount_reset_proc_body<'a>(
 
     // Uniqueness test
     let is_unique_stmt = {
-        let_lowlevel(
-            root.arena,
-            LAYOUT_BOOL,
+        Stmt::Let(
             is_unique,
-            Eq,
-            &[rc, refcount_1],
+            Expr::Call(Call {
+                call_type: CallType::LowLevel {
+                    op: Eq,
+                    update_mode: UpdateModeId::BACKEND_DUMMY,
+                },
+                arguments: root.arena.alloc_slice_copy(&[rc, refcount_1]),
+            }),
+            LAYOUT_BOOL,
             root.arena.alloc(if_stmt),
         )
     };

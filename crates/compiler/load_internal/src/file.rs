@@ -16,7 +16,7 @@ use roc_can::module::{
 };
 use roc_collections::{default_hasher, BumpMap, MutMap, MutSet, VecMap, VecSet};
 use roc_constrain::module::constrain_module;
-use roc_debug_flags::dbg_do;
+use roc_debug_flags::{dbg_do, ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION};
 #[cfg(debug_assertions)]
 use roc_debug_flags::{
     ROC_CHECK_MONO_IR, ROC_PRINT_IR_AFTER_REFCOUNT, ROC_PRINT_IR_AFTER_RESET_REUSE,
@@ -3128,6 +3128,12 @@ fn update<'a>(
                         ident_ids,
                         &mut update_mode_ids,
                         &mut state.procedures,
+                    );
+
+                    debug_print_ir!(
+                        state,
+                        &layout_interner,
+                        ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION
                     );
 
                     // This is not safe with the new non-recursive RC updates that we do for tag unions

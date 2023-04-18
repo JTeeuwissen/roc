@@ -8,7 +8,8 @@ version.workspace = true
 
 [dev-dependencies]
 cli_utils = { path = "../cli_utils" }
-roc_build = { path = "../compiler/build", features = ["target-x86_64"] }
+roc_command_utils = { path = "../utils/command" }
+roc_build = { path = "../compiler/build" }
 roc_linker = { path = "../linker" }
 roc_load = { path = "../compiler/load" }
 roc_mono = { path = "../compiler/mono" }

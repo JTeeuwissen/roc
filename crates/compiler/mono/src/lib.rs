@@ -13,11 +13,13 @@ pub mod borrow;
 pub mod code_gen_help;
 pub mod drop_specialization;
 pub mod inc_dec;
+pub mod inc_dec_old;
 pub mod ir;
 pub mod layout;
 pub mod layout_soa;
 pub mod low_level;
 pub mod reset_reuse;
+pub mod reset_reuse_old;
 pub mod tail_recursion;
 
 pub mod debug;

@@ -44,3 +44,10 @@ roc_test_utils = { path = "../../test_utils" }
 indoc.workspace = true
 maplit.workspace = true
 pretty_assertions.workspace = true
+
+
+[features]
+default = ["BEANS_RC"]
+# default = ["PERCEUS_RC"]
+BEANS_RC = []
+PERCEUS_RC = []

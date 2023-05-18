@@ -17,10 +17,12 @@ use roc_can::module::{
 use roc_collections::{default_hasher, BumpMap, MutMap, MutSet, VecMap, VecSet};
 use roc_constrain::module::constrain_module;
 use roc_debug_flags::dbg_do;
+#[cfg(all(debug_assertions, feature = "PERCEUS_RC"))]
+use roc_debug_flags::ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION;
 #[cfg(debug_assertions)]
 use roc_debug_flags::{
-    ROC_CHECK_MONO_IR, ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION, ROC_PRINT_IR_AFTER_REFCOUNT,
-    ROC_PRINT_IR_AFTER_RESET_REUSE, ROC_PRINT_IR_AFTER_SPECIALIZATION, ROC_PRINT_LOAD_LOG,
+    ROC_CHECK_MONO_IR, ROC_PRINT_IR_AFTER_REFCOUNT, ROC_PRINT_IR_AFTER_RESET_REUSE,
+    ROC_PRINT_IR_AFTER_SPECIALIZATION, ROC_PRINT_LOAD_LOG,
 };
 use roc_derive::SharedDerivedModule;
 use roc_error_macros::internal_error;
@@ -38,8 +40,8 @@ use roc_mono::layout::LayoutInterner;
 use roc_mono::layout::{
     GlobalLayoutInterner, LambdaName, Layout, LayoutCache, LayoutProblem, Niche, STLayoutInterner,
 };
-use roc_mono::reset_reuse;
-use roc_mono::{drop_specialization, inc_dec};
+#[cfg(feature = "PERCEUS_RC")]
+use roc_mono::{drop_specialization, inc_dec, reset_reuse};
 use roc_packaging::cache::RocCacheDir;
 use roc_parse::ast::{
     self, CommentOrNewline, Defs, Expr, ExtractSpaces, Pattern, Spaced, StrLiteral, TypeAnnotation,
@@ -3104,39 +3106,74 @@ fn update<'a>(
 
                     let ident_ids = state.constrained_ident_ids.get_mut(&module_id).unwrap();
 
-                    inc_dec::insert_inc_dec_operations(
-                        arena,
-                        &layout_interner,
-                        &mut state.procedures,
-                    );
+                    #[cfg(all(feature = "PERCEUS_RC", feature = "BEANS_RC"))]
+                    compile_error!("perceus and beans rc cannot be enabled at the same time");
+                    #[cfg(feature = "PERCEUS_RC")]
+                    {
+                        inc_dec::insert_inc_dec_operations(
+                            arena,
+                            &layout_interner,
+                            &mut state.procedures,
+                        );
 
-                    debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_REFCOUNT);
+                        debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_REFCOUNT);
 
-                    drop_specialization::specialize_drops(
-                        arena,
-                        &mut layout_interner,
-                        module_id,
-                        ident_ids,
-                        &mut state.procedures,
-                    );
+                        drop_specialization::specialize_drops(
+                            arena,
+                            &mut layout_interner,
+                            module_id,
+                            ident_ids,
+                            &mut state.procedures,
+                        );
 
-                    debug_print_ir!(
-                        state,
-                        &layout_interner,
-                        ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION
-                    );
+                        debug_print_ir!(
+                            state,
+                            &layout_interner,
+                            ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION
+                        );
 
-                    reset_reuse::insert_reset_reuse_operations(
-                        arena,
-                        &layout_interner,
-                        module_id,
-                        ident_ids,
-                        state.target_info,
-                        &mut update_mode_ids,
-                        &mut state.procedures,
-                    );
+                        reset_reuse::insert_reset_reuse_operations(
+                            arena,
+                            &layout_interner,
+                            module_id,
+                            ident_ids,
+                            state.target_info,
+                            &mut update_mode_ids,
+                            &mut state.procedures,
+                        );
 
-                    debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_RESET_REUSE);
+                        debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_RESET_REUSE);
+                    }
+                    #[cfg(feature = "BEANS_RC")]
+                    {
+                        Proc::insert_reset_reuse_operations(
+                            arena,
+                            &mut layout_interner,
+                            module_id,
+                            ident_ids,
+                            &mut update_mode_ids,
+                            &mut state.procedures,
+                        );
+
+                        debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_RESET_REUSE);
+
+                        let host_exposed_procs = bumpalo::collections::Vec::from_iter_in(
+                            state.exposed_to_host.top_level_values.keys().copied(),
+                            arena,
+                        );
+
+                        Proc::insert_refcount_operations(
+                            arena,
+                            &layout_interner,
+                            module_id,
+                            ident_ids,
+                            &mut update_mode_ids,
+                            &mut state.procedures,
+                            &host_exposed_procs,
+                        );
+
+                        debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_REFCOUNT);
+                    }
 
                     // This is not safe with the new non-recursive RC updates that we do for tag unions
                     //

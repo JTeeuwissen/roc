@@ -49,5 +49,5 @@ pretty_assertions.workspace = true
 [features]
 default = ["BEANS_RC"]
 # default = ["PERCEUS_RC"]
-BEANS_RC = []
-PERCEUS_RC = []
+BEANS_RC = ["roc_mono/BEANS_RC"]
+PERCEUS_RC = ["roc_mono/PERCEUS_RC"]

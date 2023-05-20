@@ -290,7 +290,50 @@ impl<'a> ParamMap<'a> {
         .into_bump_slice()
     }
 
+    fn init_borrow_args_always_owned(
+        arena: &'a Bump,
+        ps: &'a [(InLayout<'a>, Symbol)],
+    ) -> &'a [Param<'a>] {
+        Vec::from_iter_in(
+            ps.iter().map(|(layout, symbol)| Param {
+                ownership: Ownership::Owned,
+                layout: *layout,
+                symbol: *symbol,
+            }),
+            arena,
+        )
+        .into_bump_slice()
+    }
+
     fn visit_proc(
+        &mut self,
+        arena: &'a Bump,
+        interner: &STLayoutInterner<'a>,
+        proc: &Proc<'a>,
+        key: (Symbol, ProcLayout<'a>),
+    ) {
+        #[cfg(feature = "BEANS_RC")]
+        {
+            if proc.must_own_arguments {
+                self.visit_proc_always_owned(arena, interner, proc, key);
+                return;
+            }
+        }
+
+        let index: usize = self.get_param_offset(interner, key.0, key.1).into();
+
+        for (i, param) in Self::init_borrow_args(arena, interner, proc.args)
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            self.declarations[index + i] = param;
+        }
+
+        self.visit_stmt(arena, interner, proc.name.name(), &proc.body);
+    }
+
+    fn visit_proc_always_owned(
         &mut self,
         arena: &'a Bump,
         interner: &STLayoutInterner<'a>,
@@ -299,7 +342,7 @@ impl<'a> ParamMap<'a> {
     ) {
         let index: usize = self.get_param_offset(interner, key.0, key.1).into();
 
-        for (i, param) in Self::init_borrow_args(arena, interner, proc.args)
+        for (i, param) in Self::init_borrow_args_always_owned(arena, proc.args)
             .iter()
             .copied()
             .enumerate()

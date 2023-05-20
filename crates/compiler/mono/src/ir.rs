@@ -307,6 +307,9 @@ pub struct Proc<'a> {
     pub ret_layout: InLayout<'a>,
     pub is_self_recursive: SelfRecursive,
     pub host_exposed_layouts: HostExposedLayouts<'a>,
+
+    #[cfg(feature = "BEANS_RC")]
+    pub must_own_arguments: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3237,6 +3240,8 @@ fn generate_runtime_error_function<'a>(
         closure_data_layout: None,
         ret_layout,
         is_self_recursive: SelfRecursive::NotSelfRecursive,
+        #[cfg(feature = "BEANS_RC")]
+        must_own_arguments: false,
         host_exposed_layouts: HostExposedLayouts::NotHostExposed,
     }
 }
@@ -3329,6 +3334,8 @@ fn generate_host_exposed_function<'a>(
                 closure_data_layout: None,
                 ret_layout: result,
                 is_self_recursive: SelfRecursive::NotSelfRecursive,
+                #[cfg(feature = "BEANS_RC")]
+                must_own_arguments: false,
                 host_exposed_layouts: HostExposedLayouts::NotHostExposed,
             };
 
@@ -3393,6 +3400,8 @@ fn generate_host_exposed_lambda_set<'a>(
         closure_data_layout: None,
         ret_layout: return_layout,
         is_self_recursive: SelfRecursive::NotSelfRecursive,
+        #[cfg(feature = "BEANS_RC")]
+        must_own_arguments: false,
         host_exposed_layouts: HostExposedLayouts::NotHostExposed,
     };
 
@@ -3489,6 +3498,8 @@ fn specialize_proc_help<'a>(
                 closure_data_layout: Some(closure_data_layout),
                 ret_layout,
                 is_self_recursive: recursivity,
+                #[cfg(feature = "BEANS_RC")]
+                must_own_arguments: false,
                 host_exposed_layouts,
             }
         }
@@ -3688,6 +3699,8 @@ fn specialize_proc_help<'a>(
                 closure_data_layout,
                 ret_layout,
                 is_self_recursive: recursivity,
+                #[cfg(feature = "BEANS_RC")]
+                must_own_arguments: false,
                 host_exposed_layouts,
             }
         }
@@ -5549,6 +5562,9 @@ pub fn with_hole<'a>(
                                     let passed_function = PassedFunction {
                                         name: lambda_name,
                                         captured_environment: closure_data_symbol,
+                                        #[cfg(feature = "BEANS_RC")]
+                                        owns_captured_environment: false,
+                                        #[cfg(feature = "PERCEUS_RC")]
                                         owns_captured_environment: true,
                                         specialization_id,
                                         argument_layouts: arg_layouts,
@@ -9993,6 +10009,8 @@ where
             closure_data_layout: None,
             ret_layout: *field,
             is_self_recursive: SelfRecursive::NotSelfRecursive,
+            #[cfg(feature = "BEANS_RC")]
+            must_own_arguments: false,
             host_exposed_layouts: HostExposedLayouts::NotHostExposed,
         };
 
@@ -10088,6 +10106,8 @@ where
             closure_data_layout: None,
             ret_layout: *field,
             is_self_recursive: SelfRecursive::NotSelfRecursive,
+            #[cfg(feature = "BEANS_RC")]
+            must_own_arguments: false,
             host_exposed_layouts: HostExposedLayouts::NotHostExposed,
         };
 

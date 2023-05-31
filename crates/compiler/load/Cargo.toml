@@ -32,3 +32,8 @@ bumpalo.workspace = true
 
 [target.'cfg(not(windows))'.build-dependencies]
 roc_load_internal = { path = "../load_internal" }
+
+[features]
+default = ["BEANS_RC"]
+BEANS_RC = ["roc_load_internal/BEANS_RC"]
+PERCEUS_RC = ["roc_load_internal/PERCEUS_RC"]

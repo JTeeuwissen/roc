@@ -33,5 +33,6 @@ parking_lot.workspace = true
 static_assertions.workspace = true
 
 [features]
+default = ["BEANS_RC"]
 BEANS_RC = []
 PERCEUS_RC = []

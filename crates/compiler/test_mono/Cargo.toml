@@ -27,3 +27,8 @@ test_mono_macros = { path = "../test_mono_macros" }
 
 bumpalo.workspace = true
 indoc.workspace = true
+
+[features]
+default = ["BEANS_RC"]
+BEANS_RC = ["roc_load/BEANS_RC"]
+PERCEUS_RC = ["roc_load/PERCEUS_RC"]

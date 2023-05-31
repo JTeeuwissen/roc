@@ -18,6 +18,8 @@ use super::build::{
     BuilderExt,
 };
 use super::convert::zig_list_type;
+#[cfg(feature = "BEANS_RC")]
+use super::refcounting::increment_refcount_layout;
 
 fn call_list_bitcode_fn_1<'ctx>(
     env: &Env<'_, 'ctx, '_>,
@@ -124,6 +126,7 @@ pub(crate) fn list_with_capacity<'a, 'ctx>(
 pub(crate) fn list_get_unsafe<'a, 'ctx>(
     env: &Env<'a, 'ctx, '_>,
     layout_interner: &mut STLayoutInterner<'a>,
+    #[cfg(feature = "BEANS_RC")] layout_ids: &mut LayoutIds<'a>,
     element_layout: InLayout<'a>,
     elem_index: IntValue<'ctx>,
     wrapper_struct: StructValue<'ctx>,
@@ -146,13 +149,18 @@ pub(crate) fn list_get_unsafe<'a, 'ctx>(
         )
     };
 
-    load_roc_value(
+    let result = load_roc_value(
         env,
         layout_interner,
         element_layout,
         elem_ptr,
         "list_get_load_element",
-    )
+    );
+
+    #[cfg(feature = "BEANS_RC")]
+    increment_refcount_layout(env, layout_interner, layout_ids, 1, result, element_layout);
+
+    result
 }
 
 /// List.reserve : List elem, Nat -> List elem

@@ -3146,16 +3146,16 @@ fn update<'a>(
                     }
                     #[cfg(feature = "BEANS_RC")]
                     {
-                        Proc::insert_reset_reuse_operations(
-                            arena,
-                            &mut layout_interner,
-                            module_id,
-                            ident_ids,
-                            &mut update_mode_ids,
-                            &mut state.procedures,
-                        );
+                        // Proc::insert_reset_reuse_operations(
+                        //     arena,
+                        //     &mut layout_interner,
+                        //     module_id,
+                        //     ident_ids,
+                        //     &mut update_mode_ids,
+                        //     &mut state.procedures,
+                        // );
 
-                        debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_RESET_REUSE);
+                        // debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_RESET_REUSE);
 
                         let host_exposed_procs = bumpalo::collections::Vec::from_iter_in(
                             state.exposed_to_host.top_level_values.keys().copied(),

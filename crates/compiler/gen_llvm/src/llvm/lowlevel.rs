@@ -819,6 +819,8 @@ pub(crate) fn run_low_level<'a, 'ctx>(
             list_get_unsafe(
                 env,
                 layout_interner,
+                #[cfg(feature = "BEANS_RC")]
+                layout_ids,
                 list_element_layout!(layout_interner, list_layout),
                 element_index.into_int_value(),
                 wrapper_struct.into_struct_value(),

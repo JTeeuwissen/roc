@@ -24,3 +24,8 @@ roc_target = { path = "../roc_target" }
 bumpalo.workspace = true
 inkwell.workspace = true
 target-lexicon.workspace = true
+
+[features]
+default = ["BEANS_RC"]
+BEANS_RC = []
+PERCEUS_RC = []

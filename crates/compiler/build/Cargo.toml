@@ -54,7 +54,3 @@ target-x86_64 = ["roc_gen_dev/target-x86_64"]
 # This is used to enable fuzzing and sanitizers.
 # Example use is describe here: https://github.com/bhansconnect/roc-fuzz
 sanitizers = []
-
-default = ["BEANS_RC"]
-BEANS_RC = ["roc_gen_llvm/BEANS_RC", "roc_load/BEANS_RC"]
-PERCEUS_RC = ["roc_gen_llvm/PERCEUS_RC", "roc_load/PERCEUS_RC"]

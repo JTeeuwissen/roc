@@ -449,7 +449,7 @@ impl<'a> CodeGenHelp<'a> {
             closure_data_layout: None,
             ret_layout,
             is_self_recursive: SelfRecursive::NotSelfRecursive,
-            #[cfg(feature = "BEANS_RC")]
+            #[cfg(not(PERCEUS_RC))]
             must_own_arguments: false,
             host_exposed_layouts: HostExposedLayouts::NotHostExposed,
         });
@@ -770,7 +770,7 @@ impl<'a> CallerProc<'a> {
             closure_data_layout: None,
             ret_layout: Layout::UNIT,
             is_self_recursive: SelfRecursive::NotSelfRecursive,
-            #[cfg(feature = "BEANS_RC")]
+            #[cfg(not(PERCEUS_RC))]
             must_own_arguments: false,
             host_exposed_layouts: HostExposedLayouts::NotHostExposed,
         };

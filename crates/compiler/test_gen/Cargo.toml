@@ -59,14 +59,11 @@ tempfile.workspace = true
 
 
 [features]
-default = ["gen-llvm", "BEANS_RC"]
+default = ["gen-llvm"]
 gen-dev = []
 gen-llvm = []
 gen-llvm-wasm = ["gen-llvm"]
 gen-wasm = []
-
-BEANS_RC = ["roc_gen_llvm/BEANS_RC", "roc_build/BEANS_RC", "roc_load/BEANS_RC"]
-PERCEUS_RC = ["roc_gen_llvm/PERCEUS_RC", "roc_build/PERCEUS_RC", "roc_load/PERCEUS_RC"]
 
 [[bench]]
 name = "list_map"

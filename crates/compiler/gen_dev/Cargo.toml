@@ -34,8 +34,5 @@ bumpalo.workspace = true
 capstone.workspace = true
 
 [features]
-default = ["BEANS_RC"]
 target-aarch64 = []
 target-x86_64 = []
-BEANS_RC = []
-PERCEUS_RC = []

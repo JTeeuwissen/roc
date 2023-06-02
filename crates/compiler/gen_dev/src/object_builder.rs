@@ -443,7 +443,7 @@ fn build_exposed_proc<'a, B: Backend<'a>>(backend: &mut B, proc: &Proc<'a>) -> P
         closure_data_layout: None,
         ret_layout: proc.ret_layout,
         is_self_recursive: roc_mono::ir::SelfRecursive::NotSelfRecursive,
-        #[cfg(feature = "BEANS_RC")]
+        #[cfg(not(PERCEUS_RC))]
         must_own_arguments: false,
         host_exposed_layouts: roc_mono::ir::HostExposedLayouts::NotHostExposed,
     }
@@ -526,7 +526,7 @@ fn build_exposed_generic_proc<'a, B: Backend<'a>>(backend: &mut B, proc: &Proc<'
         closure_data_layout: None,
         ret_layout: roc_mono::layout::Layout::UNIT,
         is_self_recursive: roc_mono::ir::SelfRecursive::NotSelfRecursive,
-        #[cfg(feature = "BEANS_RC")]
+        #[cfg(not(PERCEUS_RC))]
         must_own_arguments: false,
         host_exposed_layouts: roc_mono::ir::HostExposedLayouts::NotHostExposed,
     }

@@ -29,9 +29,3 @@ lazy_static.workspace = true
 pretty_assertions.workspace = true
 regex.workspace = true
 tempfile.workspace = true
-
-
-[features]
-default = ["BEANS_RC"]
-BEANS_RC = ["roc_load/BEANS_RC"]
-PERCEUS_RC = ["roc_load/PERCEUS_RC"]

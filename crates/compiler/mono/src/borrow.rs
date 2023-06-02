@@ -290,6 +290,7 @@ impl<'a> ParamMap<'a> {
         .into_bump_slice()
     }
 
+    #[cfg(not(PERCEUS_RC))]
     fn init_borrow_args_always_owned(
         arena: &'a Bump,
         ps: &'a [(InLayout<'a>, Symbol)],
@@ -312,7 +313,7 @@ impl<'a> ParamMap<'a> {
         proc: &Proc<'a>,
         key: (Symbol, ProcLayout<'a>),
     ) {
-        #[cfg(feature = "BEANS_RC")]
+        #[cfg(not(PERCEUS_RC))]
         {
             if proc.must_own_arguments {
                 self.visit_proc_always_owned(arena, interner, proc, key);
@@ -333,6 +334,7 @@ impl<'a> ParamMap<'a> {
         self.visit_stmt(arena, interner, proc.name.name(), &proc.body);
     }
 
+    #[cfg(not(PERCEUS_RC))]
     fn visit_proc_always_owned(
         &mut self,
         arena: &'a Bump,

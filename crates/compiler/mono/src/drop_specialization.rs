@@ -223,12 +223,19 @@ fn specialize_drops_stmt<'a, 'i>(
                 Expr::Reuse { .. } => {
                     alloc_let_with_continuation!(environment)
                 }
-                Expr::Reset { .. } => {
-                    // TODO allow to inline this to replace it with resetref
-                    alloc_let_with_continuation!(environment)
-                }
-                Expr::ResetRef { .. } => {
-                    alloc_let_with_continuation!(environment)
+                Expr::Reset { .. } | Expr::ResetRef { .. } => {
+                    let incremented_symbols = environment.incremented_symbols.drain();
+
+                    let new_stmt = alloc_let_with_continuation!(environment);
+
+                    // The new_environment might have inserted increments that were set to 0 before. We need to add th
+                    for (symbol, increment) in incremented_symbols.map.into_iter() {
+                        environment
+                            .incremented_symbols
+                            .insert_count(symbol, increment);
+                    }
+
+                    new_stmt
                 }
                 Expr::Literal(literal) => {
                     // literal ints are used to store the the index for lists.

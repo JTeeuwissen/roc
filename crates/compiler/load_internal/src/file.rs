@@ -17,7 +17,7 @@ use roc_can::module::{
 use roc_collections::{default_hasher, BumpMap, MutMap, MutSet, VecMap, VecSet};
 use roc_constrain::module::constrain_module;
 use roc_debug_flags::dbg_do;
-#[cfg(all(debug_assertions, PERCEUS_RC))]
+#[cfg(all(debug_assertions, DROP_SPECIALIZE))]
 use roc_debug_flags::ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION;
 #[cfg(debug_assertions)]
 use roc_debug_flags::{
@@ -32,6 +32,8 @@ use roc_module::symbol::{
     IdentIds, IdentIdsByModule, Interns, ModuleId, ModuleIds, PQModuleName, PackageModuleIds,
     PackageQualified, Symbol,
 };
+#[cfg(DROP_SPECIALIZE)]
+use roc_mono::drop_specialization;
 use roc_mono::ir::{
     CapturedSymbols, ExternalSpecializations, GlueLayouts, LambdaSetId, PartialProc, Proc,
     ProcLayout, Procs, ProcsBase, UpdateModeIds, UsageTrackingMap,
@@ -41,7 +43,7 @@ use roc_mono::layout::{
     GlobalLayoutInterner, LambdaName, Layout, LayoutCache, LayoutProblem, Niche, STLayoutInterner,
 };
 #[cfg(PERCEUS_RC)]
-use roc_mono::{drop_specialization, inc_dec, reset_reuse};
+use roc_mono::{inc_dec, reset_reuse};
 use roc_packaging::cache::RocCacheDir;
 use roc_parse::ast::{
     self, CommentOrNewline, Defs, Expr, ExtractSpaces, Pattern, Spaced, StrLiteral, TypeAnnotation,
@@ -3116,19 +3118,22 @@ fn update<'a>(
 
                         debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_REFCOUNT);
 
-                        drop_specialization::specialize_drops(
-                            arena,
-                            &mut layout_interner,
-                            module_id,
-                            ident_ids,
-                            &mut state.procedures,
-                        );
+                        #[cfg(DROP_SPECIALIZE)]
+                        {
+                            drop_specialization::specialize_drops(
+                                arena,
+                                &mut layout_interner,
+                                module_id,
+                                ident_ids,
+                                &mut state.procedures,
+                            );
 
-                        debug_print_ir!(
-                            state,
-                            &layout_interner,
-                            ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION
-                        );
+                            debug_print_ir!(
+                                state,
+                                &layout_interner,
+                                ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION
+                            );
+                        }
 
                         reset_reuse::insert_reset_reuse_operations(
                             arena,
@@ -3171,6 +3176,23 @@ fn update<'a>(
                         );
 
                         debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_REFCOUNT);
+
+                        #[cfg(DROP_SPECIALIZE)]
+                        {
+                            drop_specialization::specialize_drops(
+                                arena,
+                                &mut layout_interner,
+                                module_id,
+                                ident_ids,
+                                &mut state.procedures,
+                            );
+
+                            debug_print_ir!(
+                                state,
+                                &layout_interner,
+                                ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION
+                            );
+                        }
                     }
 
                     // This is not safe with the new non-recursive RC updates that we do for tag unions

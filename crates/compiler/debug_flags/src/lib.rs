@@ -136,6 +136,9 @@ flags! {
     /// Which inlines drop functions to remove pairs of alloc/dealloc instructions of its children.
     ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION
 
+    /// Writes a pretty mono IR after finishing all RC optimizations.
+    ROC_PRINT_IR_AFTER_RC
+
     /// Prints debug information during the alias analysis pass.
     ROC_DEBUG_ALIAS_ANALYSIS
 

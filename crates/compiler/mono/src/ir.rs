@@ -18,7 +18,7 @@ use roc_collections::VecMap;
 use roc_debug_flags::dbg_do;
 #[cfg(debug_assertions)]
 use roc_debug_flags::{
-    ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION, ROC_PRINT_IR_AFTER_REFCOUNT,
+    ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION, ROC_PRINT_IR_AFTER_RC, ROC_PRINT_IR_AFTER_REFCOUNT,
     ROC_PRINT_IR_AFTER_RESET_REUSE, ROC_PRINT_IR_AFTER_SPECIALIZATION, ROC_PRINT_RUNTIME_ERROR_GEN,
 };
 use roc_derive::SharedDerivedModule;
@@ -59,6 +59,9 @@ pub fn pretty_print_ir_symbols() -> bool {
         return true;
     });
     dbg_do!(ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION, {
+        return true;
+    });
+    dbg_do!(ROC_PRINT_IR_AFTER_RC, {
         return true;
     });
     false

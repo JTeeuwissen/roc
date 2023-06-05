@@ -21,8 +21,8 @@ use roc_debug_flags::dbg_do;
 use roc_debug_flags::ROC_PRINT_IR_AFTER_DROP_SPECIALIZATION;
 #[cfg(debug_assertions)]
 use roc_debug_flags::{
-    ROC_CHECK_MONO_IR, ROC_PRINT_IR_AFTER_REFCOUNT, ROC_PRINT_IR_AFTER_RESET_REUSE,
-    ROC_PRINT_IR_AFTER_SPECIALIZATION, ROC_PRINT_LOAD_LOG,
+    ROC_CHECK_MONO_IR, ROC_PRINT_IR_AFTER_RC, ROC_PRINT_IR_AFTER_REFCOUNT,
+    ROC_PRINT_IR_AFTER_RESET_REUSE, ROC_PRINT_IR_AFTER_SPECIALIZATION, ROC_PRINT_LOAD_LOG,
 };
 use roc_derive::SharedDerivedModule;
 use roc_error_macros::internal_error;
@@ -3194,6 +3194,8 @@ fn update<'a>(
                             );
                         }
                     }
+
+                    debug_print_ir!(state, &layout_interner, ROC_PRINT_IR_AFTER_RC);
 
                     // This is not safe with the new non-recursive RC updates that we do for tag unions
                     //

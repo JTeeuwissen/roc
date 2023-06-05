@@ -18,12 +18,13 @@ use crate::ir::{
     BranchInfo, Call, Expr, ListLiteralElement, Proc, Stmt, UpdateModeId, UpdateModeIds,
 };
 use crate::layout::{
-    Layout, LayoutInterner, LayoutRepr, STLayoutInterner, TagIdIntType, UnionLayout,
+    InLayout, Layout, LayoutInterner, LayoutRepr, STLayoutInterner, TagIdIntType, UnionLayout,
 };
 use bumpalo::collections::Vec;
 use bumpalo::Bump;
 use roc_collections::all::MutSet;
 use roc_module::symbol::{IdentIds, ModuleId, Symbol};
+use roc_target::TargetInfo;
 
 pub fn insert_reset_reuse<'a, 'i>(
     arena: &'a Bump,
@@ -31,12 +32,14 @@ pub fn insert_reset_reuse<'a, 'i>(
     home: ModuleId,
     ident_ids: &'i mut IdentIds,
     update_mode_ids: &'i mut UpdateModeIds,
+    target_info: TargetInfo,
     mut proc: Proc<'a>,
 ) -> Proc<'a> {
     let mut env = Env {
         arena,
         interner,
         home,
+        target_info,
         ident_ids,
         update_mode_ids,
         jp_live_vars: Default::default(),
@@ -52,24 +55,63 @@ pub fn insert_reset_reuse<'a, 'i>(
 struct CtorInfo<'a> {
     id: TagIdIntType,
     layout: UnionLayout<'a>,
+    in_layout: InLayout<'a>,
 }
 
-fn may_reuse(tag_layout: UnionLayout, tag_id: TagIdIntType, other: &CtorInfo) -> bool {
-    if tag_layout != other.layout {
-        return false;
+enum Foo {
+    None,
+    Use,
+    Cast,
+}
+
+fn may_reuse(
+    layout_interner: &STLayoutInterner,
+    target_info: TargetInfo,
+    tag_layout: UnionLayout,
+    tag_id: TagIdIntType,
+    in_layout: InLayout,
+    other: &CtorInfo,
+) -> Foo {
+    if tag_layout.tag_is_null(tag_id) || other.layout.tag_is_null(other.id) {
+        return Foo::None;
     }
 
-    // we should not get here if the tag we matched on is represented as NULL
-    debug_assert!(!tag_layout.tag_is_null(other.id as _));
+    let (size, alignment) = tag_layout.data_size_and_alignment(layout_interner, target_info);
+    let has_tag = match tag_layout {
+        UnionLayout::NonRecursive(_) => return Foo::None,
+        // The memory for union layouts that has a tag_id can be reused for new allocations with tag_id.
+        UnionLayout::Recursive(_) | UnionLayout::NullableWrapped { .. } => true,
+        // The memory for union layouts that have no tag_id can be reused for new allocations without tag_id
+        UnionLayout::NonNullableUnwrapped(_) | UnionLayout::NullableUnwrapped { .. } => false,
+    };
 
-    // furthermore, we can only use the memory if the tag we're creating is non-NULL
-    !tag_layout.tag_is_null(tag_id)
+    let (other_size, other_alignment) = other
+        .layout
+        .data_size_and_alignment(layout_interner, target_info);
+    let other_has_tag = match other.layout {
+        UnionLayout::NonRecursive(_) => return Foo::None,
+        // The memory for union layouts that has a tag_id can be reused for new allocations with tag_id.
+        UnionLayout::Recursive(_) | UnionLayout::NullableWrapped { .. } => true,
+        // The memory for union layouts that have no tag_id can be reused for new allocations without tag_id
+        UnionLayout::NonNullableUnwrapped(_) | UnionLayout::NullableUnwrapped { .. } => false,
+    };
+
+    if size == other_size && alignment == other_alignment && has_tag == other_has_tag {
+        if other.in_layout == in_layout {
+            Foo::Use
+        } else {
+            Foo::Cast
+        }
+    } else {
+        Foo::None
+    }
 }
 
 #[derive(Debug)]
 struct Env<'a, 'i> {
     arena: &'a Bump,
     interner: &'i mut STLayoutInterner<'a>,
+    target_info: TargetInfo,
 
     /// required for creating new `Symbol`s
     home: ModuleId,
@@ -103,21 +145,72 @@ fn function_s<'a, 'i>(
                 tag_layout,
                 tag_id,
                 arguments,
-            } if may_reuse(*tag_layout, *tag_id, c) => {
-                // for now, always overwrite the tag ID just to be sure
-                let update_tag_id = true;
+            } => {
+                match may_reuse(
+                    &env.interner,
+                    env.target_info,
+                    *tag_layout,
+                    *tag_id,
+                    *layout,
+                    c,
+                ) {
+                    Foo::Cast => {
+                        let new_symbol = env.unique_symbol();
 
-                let new_expr = Expr::Reuse {
-                    symbol: w.symbol,
-                    update_mode: w.update_mode,
-                    update_tag_id,
-                    tag_layout: *tag_layout,
-                    tag_id: *tag_id,
-                    arguments,
-                };
-                let new_stmt = Let(*symbol, new_expr, *layout, continuation);
+                        // for now, always overwrite the tag ID just to be sure
+                        let update_tag_id = true;
 
-                arena.alloc(new_stmt)
+                        let new_expr = Expr::Reuse {
+                            symbol: new_symbol,
+                            update_mode: w.update_mode,
+                            update_tag_id,
+                            tag_layout: *tag_layout,
+                            tag_id: *tag_id,
+                            arguments,
+                        };
+                        let new_stmt = Let(*symbol, new_expr, *layout, continuation);
+
+                        let new_continuation = arena.alloc(new_stmt);
+
+                        arena.alloc(Stmt::Let(
+                            new_symbol,
+                            {
+                                Expr::Call(crate::ir::Call {
+                                    call_type: crate::ir::CallType::LowLevel {
+                                        op: roc_module::low_level::LowLevel::PtrCast,
+                                        update_mode: UpdateModeId::BACKEND_DUMMY,
+                                    },
+                                    arguments: Vec::from_iter_in([w.symbol], arena)
+                                        .into_bump_slice(),
+                                })
+                            },
+                            *layout,
+                            new_continuation,
+                        ))
+                    }
+                    Foo::None => {
+                        let rest = function_s(env, w, c, continuation);
+                        let new_stmt = Let(*symbol, expr.clone(), *layout, rest);
+
+                        arena.alloc(new_stmt)
+                    }
+                    Foo::Use => {
+                        // for now, always overwrite the tag ID just to be sure
+                        let update_tag_id = true;
+
+                        let new_expr = Expr::Reuse {
+                            symbol: w.symbol,
+                            update_mode: w.update_mode,
+                            update_tag_id,
+                            tag_layout: *tag_layout,
+                            tag_id: *tag_id,
+                            arguments,
+                        };
+                        let new_stmt = Let(*symbol, new_expr, *layout, continuation);
+
+                        arena.alloc(new_stmt)
+                    }
+                }
             }
             _ => {
                 let rest = function_s(env, w, c, continuation);
@@ -627,6 +720,7 @@ fn function_r_branch_body<'a, 'i>(
                 let ctor_info = CtorInfo {
                     layout: union_layout,
                     id: *tag_id,
+                    in_layout: layout.clone(),
                 };
                 function_d(env, *scrutinee, &ctor_info, temp)
             }

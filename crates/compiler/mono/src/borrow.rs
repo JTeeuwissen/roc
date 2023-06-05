@@ -1073,6 +1073,7 @@ pub fn lowlevel_borrow_signature(arena: &Bump, op: LowLevel) -> &[Ownership] {
         StrRepeat => arena.alloc_slice_copy(&[borrowed, irrelevant]),
         StrFromInt | StrFromFloat => arena.alloc_slice_copy(&[irrelevant]),
         Hash => arena.alloc_slice_copy(&[borrowed, irrelevant]),
+        PtrCast => arena.alloc_slice_copy(&[borrowed]),
 
         ListIsUnique => arena.alloc_slice_copy(&[borrowed]),
 
@@ -1080,7 +1081,7 @@ pub fn lowlevel_borrow_signature(arena: &Bump, op: LowLevel) -> &[Ownership] {
             unreachable!("These lowlevel operations are turned into mono Expr's")
         }
 
-        PtrCast | PtrWrite | RefCountIncRcPtr | RefCountDecRcPtr | RefCountIncDataPtr
+        PtrWrite | RefCountIncRcPtr | RefCountDecRcPtr | RefCountIncDataPtr
         | RefCountDecDataPtr | RefCountIsUnique => {
             unreachable!("Only inserted *after* borrow checking: {:?}", op);
         }

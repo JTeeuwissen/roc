@@ -440,6 +440,7 @@ impl<'a> Proc<'a> {
         home: ModuleId,
         ident_ids: &'i mut IdentIds,
         update_mode_ids: &'i mut UpdateModeIds,
+        target_info: TargetInfo,
         procs: &mut MutMap<(Symbol, ProcLayout<'a>), Proc<'a>>,
     ) {
         for proc in procs.values_mut() {
@@ -449,6 +450,7 @@ impl<'a> Proc<'a> {
                 home,
                 ident_ids,
                 update_mode_ids,
+                target_info,
                 proc.clone(),
             );
             *proc = new_proc;

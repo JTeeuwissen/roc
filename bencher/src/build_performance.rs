@@ -187,7 +187,7 @@ const BENCHMARKS: [Benchmark; 5] = [
     },
     Benchmark {
         name: "RBTree",
-        path: "roc/RBTreeInsert.roc",
+        path: "roc/RBTree.roc",
     },
     Benchmark {
         name: "RBTreeCk",

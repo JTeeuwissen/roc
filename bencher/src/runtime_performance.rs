@@ -128,7 +128,7 @@ fn build_benchmarks<'a>(
                         .unwrap()
                         .join(relative_output_path);
 
-                    fs::copy(full_output_path.clone(), path).unwrap();
+                    fs::rename(full_output_path.clone(), path).unwrap();
                 }
                 ConfigurationVariant::Koka => {
                     Command::new("koka")
@@ -145,12 +145,29 @@ fn build_benchmarks<'a>(
 
                     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
                 }
+                ConfigurationVariant::Haskell => {
+                    Command::new("ghc")
+                        .args([
+                            "--make",
+                            "-o",
+                            path.as_str(),
+                            "-O",
+                            benchmarks_path
+                                .join(benchmark.haskell_path)
+                                .to_str()
+                                .unwrap(),
+                        ])
+                        .stderr(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .output()
+                        .expect("failed to execute process");
+                }
             };
         }
     }
 }
 
-const CONFIGURATIONS: [Configuration; 5] = [
+const CONFIGURATIONS: [Configuration; 6] = [
     Configuration {
         name: "Beans",
         variant: ConfigurationVariant::Roc(RocConfiguration::Beans),
@@ -171,6 +188,10 @@ const CONFIGURATIONS: [Configuration; 5] = [
         name: "Koka",
         variant: ConfigurationVariant::Koka,
     },
+    Configuration {
+        name: "Haskell",
+        variant: ConfigurationVariant::Haskell,
+    },
 ];
 
 struct Configuration<'a> {
@@ -181,6 +202,7 @@ struct Configuration<'a> {
 enum ConfigurationVariant {
     Roc(RocConfiguration),
     Koka,
+    Haskell,
 }
 
 const BENCHMARKS: [Benchmark; 5] = [
@@ -188,26 +210,31 @@ const BENCHMARKS: [Benchmark; 5] = [
         name: "Deriv",
         roc_path: "roc/Deriv.roc",
         koka_path: "koka/deriv.kk",
+        haskell_path: "haskell/deriv.hs",
     },
     Benchmark {
         name: "NQueens",
         roc_path: "roc/NQueens.roc",
         koka_path: "koka/nqueens.kk",
+        haskell_path: "haskell/nqueens.hs",
     },
     Benchmark {
         name: "CFold",
         roc_path: "roc/CFold.roc",
         koka_path: "koka/cfold.kk",
+        haskell_path: "haskell/cfold.hs",
     },
     Benchmark {
         name: "RBTree",
         roc_path: "roc/RBTree.roc",
         koka_path: "koka/rbtree.kk",
+        haskell_path: "haskell/rbtree.hs",
     },
     Benchmark {
         name: "RBTreeCk",
         roc_path: "roc/RBTreeCk.roc",
         koka_path: "koka/rbtree-ck.kk",
+        haskell_path: "haskell/rbtree-ck.hs",
     },
 ];
 
@@ -215,4 +242,5 @@ struct Benchmark<'a> {
     name: &'a str,
     roc_path: &'a str,
     koka_path: &'a str,
+    haskell_path: &'a str,
 }

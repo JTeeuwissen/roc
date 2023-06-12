@@ -3,3 +3,12 @@
 .koka/**
 results/**
 binaries/**
+
+benchmarks/haskell/**
+!benchmarks/haskell/*.hs
+
+benchmarks/koka/**
+!benchmarks/koka/*.kk
+
+benchmarks/roc/**
+!benchmarks/roc/*.roc

@@ -47,7 +47,7 @@ fun ln( n : expr) : expr
     Val(1) -> Val(0)
     f      -> Ln(f)
 
-fun d( x : string, ^e : expr) : div expr
+fun d( x : string, e : expr) : div expr
   match e
     Val(_)     -> Val(0)
     Var(y)     -> if x == y then Val(1) else Val(0)
@@ -58,7 +58,7 @@ fun d( x : string, ^e : expr) : div expr
 
 
 
-fun count( ^e : expr) : int
+fun count( e : expr) : int
   match e
     Val(_)   -> 1
     Var(_)   -> 1

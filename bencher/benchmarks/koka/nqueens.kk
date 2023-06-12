@@ -4,7 +4,7 @@ import std/num/int32
 alias solution = list<int32>
 alias solutions = list<list<int32>>
 
-fun safe( queen : int32, diag : int32, ^xs : solution ) : bool 
+fun safe( queen : int32, diag : int32, xs : solution ) : bool 
   match xs
     Cons(q,qs) -> (queen != q && queen != (q+diag) && queen != (q - diag) && safe(queen,diag.inc,qs))
     _          -> True

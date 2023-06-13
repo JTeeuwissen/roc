@@ -22,7 +22,8 @@ fn main() {
                 current_dir.join("binaries/").as_path(),
                 iterations.parse::<u32>().unwrap(),
                 current_dir.parent().unwrap(),
-                current_dir.join("results/benchmark.csv").as_path(),
+                current_dir.join("results/time-benchmark.csv").as_path(),
+                current_dir.join("results/memory-benchmark.csv").as_path(),
             );
         }
         _ => todo!(),

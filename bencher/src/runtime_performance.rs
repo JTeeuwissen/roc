@@ -1,10 +1,11 @@
 use std::{
-    fs,
+    fs, iter,
     os::unix::prelude::PermissionsExt,
     path::Path,
     process::{Command, Stdio},
 };
 
+use csv::Writer;
 use regex::Regex;
 
 use crate::roc_configuration::RocConfiguration;
@@ -14,7 +15,8 @@ pub(crate) fn performance(
     binaries_path: &Path,
     iterations: u32,
     roc_path: &Path,
-    csv_path: &Path,
+    time_csv_path: &Path,
+    memory_csv_path: &Path,
 ) {
     let executable_paths = create_paths(binaries_path);
 
@@ -22,15 +24,55 @@ pub(crate) fn performance(
 
     build_benchmarks(benchmarks_path, &executable_paths, roc_path);
 
-    let args = [
-        "--warmup",
-        "3",
-        "--runs",
-        &iterations.to_string(),
-        "--export-csv",
-        csv_path.to_str().unwrap(),
-        "--ignore-failure",
-    ];
+    run_time_benchmarks(iterations, csv_path, &executable_paths);
+
+    run_memory_benchmarks(memory_csv_path, &executable_paths);
+}
+
+fn run_memory_benchmarks(
+    memory_csv_path: &Path,
+    executable_paths: &[[String; BENCHMARKS.len()]; CONFIGURATIONS.len()],
+) {
+    let memory_usage_regex = Regex::new(r"Maximum resident set size \(kbytes\): (.*)").unwrap();
+    let mut wtr = Writer::from_path(memory_csv_path).unwrap();
+    wtr.write_record(iter::once("").chain(BENCHMARKS.iter().map(|benchmark| benchmark.name)))
+        .unwrap();
+    for (ci, configuration) in CONFIGURATIONS.iter().enumerate() {
+        let mut benchmark_results: [String; BENCHMARKS.len()] = Default::default();
+
+        for (bi, _) in BENCHMARKS.iter().enumerate() {
+            let executable_path = executable_paths[ci][bi.clone()].clone();
+            let output = Command::new("/usr/bin/time")
+                .args(["-v", executable_path.as_str()])
+                .stderr(Stdio::piped())
+                .output()
+                .expect("failed to execute process");
+            let stderr = std::str::from_utf8(&output.stderr).expect("invalid utf8");
+            let memory_usage = memory_usage_regex
+                .captures(&stderr)
+                .unwrap()
+                .get(1)
+                .unwrap()
+                .as_str()
+                .parse::<i32>()
+                .unwrap();
+            benchmark_results[bi] = (memory_usage / 1024).to_string();
+        }
+
+        wtr.write_record(
+            iter::once(configuration.name).chain(benchmark_results.iter().map(|str| str.as_str())),
+        )
+        .unwrap();
+    }
+
+    wtr.flush().unwrap();
+}
+
+fn run_time_benchmarks(
+    iterations: u32,
+    csv_path: &Path,
+    executable_paths: &[[String; BENCHMARKS.len()]; CONFIGURATIONS.len()],
+) {
     let commands = BENCHMARKS
         .into_iter()
         .enumerate()
@@ -55,7 +97,19 @@ pub(crate) fn performance(
         .collect::<std::vec::Vec<_>>();
 
     Command::new("hyperfine")
-        .args(args.into_iter().chain(commands.iter().map(|s| s.as_str())))
+        .args(
+            [
+                "--warmup",
+                "3",
+                "--runs",
+                &iterations.to_string(),
+                "--export-csv",
+                csv_path.to_str().unwrap(),
+                "--ignore-failure",
+            ]
+            .into_iter()
+            .chain(commands.iter().map(|s| s.as_str())),
+        )
         .stdin(Stdio::inherit())
         .stderr(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -173,7 +227,7 @@ const CONFIGURATIONS: [Configuration; 6] = [
         variant: ConfigurationVariant::Roc(RocConfiguration::Beans),
     },
     Configuration {
-        name: "Beans w/ specialize",
+        name: "Beans Specialized",
         variant: ConfigurationVariant::Roc(RocConfiguration::BeansSpecialisation),
     },
     Configuration {
@@ -181,7 +235,7 @@ const CONFIGURATIONS: [Configuration; 6] = [
         variant: ConfigurationVariant::Roc(RocConfiguration::Perceus),
     },
     Configuration {
-        name: "Perceus w/ specialize",
+        name: "Perceus Specialized",
         variant: ConfigurationVariant::Roc(RocConfiguration::PerceusSpecialisation),
     },
     Configuration {

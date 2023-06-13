@@ -154,7 +154,7 @@ const CONFIGURATIONS: [Configuration; 4] = [
         configuration: RocConfiguration::Beans,
     },
     Configuration {
-        name: "Beans w/ specialize",
+        name: "Beans Specialized",
         configuration: RocConfiguration::BeansSpecialisation,
     },
     Configuration {
@@ -162,7 +162,7 @@ const CONFIGURATIONS: [Configuration; 4] = [
         configuration: RocConfiguration::Perceus,
     },
     Configuration {
-        name: "Perceus w/ specialize",
+        name: "Perceus Specialized",
         configuration: RocConfiguration::PerceusSpecialisation,
     },
 ];

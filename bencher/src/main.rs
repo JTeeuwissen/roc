@@ -19,6 +19,7 @@ fn main() {
         [_, iterations] => {
             runtime_performance::performance(
                 current_dir.join("benchmarks/").as_path(),
+                current_dir.join("roc/").as_path(),
                 current_dir.join("binaries/").as_path(),
                 iterations.parse::<u32>().unwrap(),
                 current_dir.parent().unwrap(),

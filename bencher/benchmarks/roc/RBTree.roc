@@ -52,7 +52,7 @@ balanceRight = \l, k, v, r ->
         Node _ lx kx vx rx ->
             Node Black l k v (Node Red lx kx vx rx)
 
-ins : Tree I64 Bool, I64, Bool -> Tree I64 Bool
+ins : Tree I32 Bool, I32, Bool -> Tree I32 Bool
 ins = \tree, kx, vx ->
     when tree is
         Leaf ->
@@ -85,7 +85,7 @@ setBlack = \tree ->
         Node _ l k v r -> Node Black l k v r
         _ -> tree
 
-insert : Tree I64 Bool, I64, Bool -> Tree I64 Bool
+insert : Tree I32 Bool, I32, Bool -> Tree I32 Bool
 insert = \t, k, v -> if isRed t then setBlack (ins t k v) else ins t k v
 
 fold : (a, b, omega -> omega), Tree a b, omega -> omega
@@ -94,7 +94,7 @@ fold = \f, tree, b ->
         Leaf -> b
         Node _ l k v r -> fold f r (f k v (fold f l b))
 
-makeTreeHelp : I64, Tree I64 Bool -> Tree I64 Bool
+makeTreeHelp : I32, Tree I32 Bool -> Tree I32 Bool
 makeTreeHelp = \n, t1 ->
     when n is
         0 -> t1
@@ -103,7 +103,7 @@ makeTreeHelp = \n, t1 ->
             t2 = insert t1 n (Num.isMultipleOf n 10)
             makeTreeHelp n1 t2
 
-makeTree : I64 -> Tree I64 Bool
+makeTree : I32 -> Tree I32 Bool
 makeTree = \n ->
     makeTreeHelp n Leaf
 

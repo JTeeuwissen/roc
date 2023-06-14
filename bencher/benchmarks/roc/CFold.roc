@@ -20,11 +20,11 @@ main =
 Expr : [
     Add Expr Expr,
     Mul Expr Expr,
-    Val I64,
-    Var I64,
+    Val I32,
+    Var I32,
 ]
 
-mkExpr : I64, I64 -> Expr
+mkExpr : I32, I32 -> Expr
 mkExpr = \n, v ->
     when n is
         0 ->
@@ -33,7 +33,7 @@ mkExpr = \n, v ->
         _ ->
             Add (mkExpr (n - 1) (v + 1)) (mkExpr (n - 1) (max (v - 1) 0))
 
-max : I64, I64 -> I64
+max : I32, I32 -> I32
 max = \a, b -> if a > b then a else b
 
 appendAdd : Expr, Expr -> Expr
@@ -54,7 +54,7 @@ appendMul = \e1, e2 ->
         _ ->
             Mul e1 e2
 
-eval : Expr -> I64
+eval : Expr -> I32
 eval = \e ->
     when e is
         Var _ ->

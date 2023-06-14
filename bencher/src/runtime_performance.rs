@@ -1,5 +1,5 @@
 use std::{
-    fs, iter,
+    env, fs, iter,
     os::unix::prelude::PermissionsExt,
     path::Path,
     process::{Command, Stdio},
@@ -12,21 +12,64 @@ use crate::roc_configuration::RocConfiguration;
 
 pub(crate) fn performance(
     benchmarks_path: &Path,
-    binaries_path: &Path,
+    roc_binaries_path: &Path,
+    benchmark_binaries_path: &Path,
     iterations: u32,
     roc_path: &Path,
     time_csv_path: &Path,
     memory_csv_path: &Path,
 ) {
-    let executable_paths = create_paths(binaries_path);
+    let _ = fs::create_dir(roc_binaries_path);
 
-    let _ = fs::create_dir(binaries_path);
+    let compiler_paths = create_compiler_paths(roc_path, roc_binaries_path);
 
-    build_benchmarks(benchmarks_path, &executable_paths, roc_path);
+    let _ = fs::create_dir(benchmark_binaries_path);
 
-    run_time_benchmarks(iterations, csv_path, &executable_paths);
+    let benchmark_paths = create_benchmark_paths(benchmark_binaries_path);
 
-    run_memory_benchmarks(memory_csv_path, &executable_paths);
+    build_benchmarks(compiler_paths, benchmarks_path, &benchmark_paths);
+
+    run_time_benchmarks(iterations, time_csv_path, &benchmark_paths);
+
+    run_memory_benchmarks(memory_csv_path, &benchmark_paths);
+}
+
+fn create_compiler_paths(
+    roc_path: &Path,
+    roc_binaries_path: &Path,
+) -> [String; CONFIGURATIONS.len()] {
+    let mut compiler_paths: [String; CONFIGURATIONS.len()] = Default::default();
+
+    for (ci, configuration) in CONFIGURATIONS.iter().enumerate() {
+        compiler_paths[ci] = match configuration.variant {
+            ConfigurationVariant::Roc(roc_configuration) => {
+                let output_path_buf = roc_binaries_path.join(configuration.name);
+                // Command::new("cargo")
+                //     .current_dir(Path::new(roc_path))
+                //     .env("RUSTFLAGS", roc_configuration.flags())
+                //     .args([
+                //         "build",
+                //         "--bin=roc",
+                //         "--release",
+                //         "--target-dir",
+                //         output_path_buf.to_str().unwrap(),
+                //     ])
+                //     .stderr(Stdio::inherit())
+                //     .stdout(Stdio::inherit())
+                //     .output()
+                //     .unwrap();
+                output_path_buf
+                    .join("release/roc")
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+            }
+            ConfigurationVariant::Koka => "koka".to_string(),
+            ConfigurationVariant::Haskell => "ghc".to_string(),
+        }
+    }
+
+    compiler_paths
 }
 
 fn run_memory_benchmarks(
@@ -117,7 +160,9 @@ fn run_time_benchmarks(
         .expect("failed to execute process");
 }
 
-fn create_paths(binaries_path: &Path) -> [[String; BENCHMARKS.len()]; CONFIGURATIONS.len()] {
+fn create_benchmark_paths(
+    binaries_path: &Path,
+) -> [[String; BENCHMARKS.len()]; CONFIGURATIONS.len()] {
     let mut executable_paths: [[String; BENCHMARKS.len()]; CONFIGURATIONS.len()] =
         Default::default();
 
@@ -140,9 +185,9 @@ fn create_paths(binaries_path: &Path) -> [[String; BENCHMARKS.len()]; CONFIGURAT
 }
 
 fn build_benchmarks<'a>(
+    compiler_paths: [String; CONFIGURATIONS.len()],
     benchmarks_path: &Path,
     executable_paths: &[[String; BENCHMARKS.len()]; CONFIGURATIONS.len()],
-    roc_path: &Path,
 ) {
     let build_output_regex = Regex::new(r"\n\n    (.*)").unwrap();
 
@@ -150,14 +195,9 @@ fn build_benchmarks<'a>(
         for (bi, benchmark) in BENCHMARKS.iter().enumerate() {
             let path = executable_paths[ci][bi].clone();
             match configuration.variant {
-                ConfigurationVariant::Roc(roc_configuration) => {
-                    let output = Command::new("cargo")
-                        .current_dir(Path::new(roc_path))
-                        .env("RUSTFLAGS", roc_configuration.flags())
+                ConfigurationVariant::Roc(_) => {
+                    let output = Command::new(compiler_paths[ci].clone().as_str())
                         .args([
-                            "run",
-                            "--release",
-                            "--",
                             "build",
                             "--optimize",
                             benchmarks_path.join(benchmark.roc_path).to_str().unwrap(),
@@ -175,32 +215,37 @@ fn build_benchmarks<'a>(
                         .as_str()
                         .to_string();
 
-                    let full_output_path = benchmarks_path
-                        .parent()
-                        .unwrap()
-                        .parent()
-                        .unwrap()
-                        .join(relative_output_path);
+                    let full_output_path =
+                        benchmarks_path.parent().unwrap().join(relative_output_path);
 
                     fs::rename(full_output_path.clone(), path).unwrap();
                 }
                 ConfigurationVariant::Koka => {
-                    Command::new("koka")
+                    Command::new(compiler_paths[ci].clone())
                         .args([
                             benchmarks_path.join(benchmark.koka_path).to_str().unwrap(),
                             "-O2",
                             "--output",
                             path.as_str(),
                         ])
-                        .stderr(Stdio::piped())
-                        .stdout(Stdio::piped())
+                        .stderr(Stdio::inherit())
+                        .stdout(Stdio::inherit())
                         .output()
                         .expect("failed to execute process");
 
                     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
                 }
                 ConfigurationVariant::Haskell => {
-                    Command::new("ghc")
+                    Command::new(compiler_paths[ci].clone())
+                        .env(
+                            "PATH",
+                            env::var("PATH")
+                                .unwrap()
+                                .split(":")
+                                .filter(|s| !s.starts_with("/nix/"))
+                                .collect::<Vec<_>>()
+                                .join(":"),
+                        )
                         .args([
                             "--make",
                             "-o",

@@ -7,15 +7,15 @@ Color : [Red, Black]
 
 Tree a b : [Leaf, Node Color (Tree a b) a b (Tree a b)]
 
-Map : Tree I64 Bool
+Map : Tree I32 Bool
 
 ConsList a : [Nil, Cons a (ConsList a)]
 
-makeMap : I64, I64 -> ConsList Map
+makeMap : I32, I32 -> ConsList Map
 makeMap = \freq, n ->
     makeMapHelp freq n Leaf Nil
 
-makeMapHelp : I64, I64, Map, ConsList Map -> ConsList Map
+makeMapHelp : I32, I32, Map, ConsList Map -> ConsList Map
 makeMapHelp = \freq, n, m, acc ->
     when n is
         0 -> Cons m acc

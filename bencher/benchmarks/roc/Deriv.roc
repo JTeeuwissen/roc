@@ -9,7 +9,7 @@ IO a : Task.Task a []
 main : Task.Task {} []
 main =
     x : Expr
-    x = Var "x"
+    x = Var "x" # Check box
 
     f : Expr
     f = pow x x
@@ -19,10 +19,10 @@ main =
     Stdout.line "done"
 
 
-nest : (I64, Expr -> IO Expr), I64, Expr -> IO Expr
+nest : (I32, Expr -> IO Expr), I32, Expr -> IO Expr
 nest = \f, n, e -> Task.loop { s: n, f, m: n, x: e } nestHelp
 
-State : { s : I64, f : I64, Expr -> IO Expr, m : I64, x : Expr }
+State : { s : I32, f : I32, Expr -> IO Expr, m : I32, x : Expr }
 
 nestHelp : State -> IO [Step State, Done Expr]
 nestHelp = \{ s, f, m, x } ->
@@ -33,15 +33,15 @@ nestHelp = \{ s, f, m, x } ->
 
             Task.succeed (Step { s, f, m: (m - 1), x: w })
 
-Expr : [Val I64, Var Str, Add Expr Expr, Mul Expr Expr, Pow Expr Expr, Ln Expr]
+Expr : [Val I32, Var Str, Add Expr Expr, Mul Expr Expr, Pow Expr Expr, Ln Expr]
 
-divmod : I64, I64 -> Result { div : I64, mod : I64 } [DivByZero]
+divmod : I32, I32 -> Result { div : I32, mod : I32 } [DivByZero]
 divmod = \l, r ->
     when Pair (Num.divTruncChecked l r) (Num.remChecked l r) is
         Pair (Ok div) (Ok mod) -> Ok { div, mod }
         _ -> Err DivByZero
 
-pown : I64, I64 -> I64
+pown : I32, I32 -> I32
 pown = \a, n ->
     when n is
         0 -> 1
@@ -144,7 +144,7 @@ d = \x, expr ->
         Ln f ->
             mul (d x f) (pow f (Val (-1)))
 
-count : Expr -> I64
+count : Expr -> I32
 count = \expr ->
     when expr is
         Val _ -> 1
@@ -154,7 +154,7 @@ count = \expr ->
         Pow f g -> count f + count g
         Ln f -> count f
 
-deriv : I64, Expr -> IO Expr
+deriv : I32, Expr -> IO Expr
 deriv = \i, f ->
     fprime = d "x" f
     line =

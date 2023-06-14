@@ -7,8 +7,13 @@ type expr
   Pow(l : expr, r : expr)
   Ln(e : expr)
 
-fun pown(a : int, b : int) : int
-  pow(a,b)
+fun pown(a : int, n : int) : div int
+  match n
+    (0) -> 1
+    (1) -> a
+    (_) ->
+      val b = pown(a, n / 2)
+      b * b * (if n % 2 == 0 then 1 else a)
 
 fun add(n0 : expr, m0 : expr) : div expr
   match(n0,m0)

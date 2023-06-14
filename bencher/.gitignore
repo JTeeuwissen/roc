@@ -12,3 +12,5 @@ benchmarks/koka/**
 
 benchmarks/roc/**
 !benchmarks/roc/*.roc
+
+roc/**

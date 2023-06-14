@@ -24,7 +24,7 @@ extend = \n, acc, solutions ->
         Nil -> acc
         Cons soln rest -> extend n (appendSafe n soln acc) rest
 
-appendSafe : I64, ConsList I64, ConsList (ConsList I64) -> ConsList (ConsList I64)
+appendSafe : I32, ConsList I32, ConsList (ConsList I32) -> ConsList (ConsList I32)
 appendSafe = \k, soln, solns ->
     if k <= 0 then
         solns
@@ -33,7 +33,7 @@ appendSafe = \k, soln, solns ->
     else
         appendSafe (k - 1) soln solns
 
-safe : I64, I64, ConsList I64 -> Bool
+safe : I32, I32, ConsList I32 -> Bool
 safe = \queen, diagonal, xs ->
     when xs is
         Nil -> Bool.true
@@ -42,12 +42,12 @@ safe = \queen, diagonal, xs ->
                 then safe queen (diagonal + 1) t
                 else Bool.false
 
-length : ConsList a -> I64
+length : ConsList a -> I32
 length = \xs ->
     dbg "length"
     lengthHelp xs 0
 
-lengthHelp : ConsList a, I64 -> I64
+lengthHelp : ConsList a, I32 -> I32
 lengthHelp = \foobar, acc ->
     when foobar is
         Cons _ lrest -> lengthHelp lrest (1 + acc)

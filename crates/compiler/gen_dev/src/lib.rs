@@ -20,7 +20,7 @@ use roc_mono::ir::{
     Literal, Param, Proc, ProcLayout, SelfRecursive, Stmt,
 };
 use roc_mono::layout::{
-    Builtin, InLayout, Layout, LayoutIds, LayoutInterner, LayoutRepr, STLayoutInterner,
+    Builtin, InLayout, LambdaName, Layout, LayoutIds, LayoutInterner, LayoutRepr, STLayoutInterner,
     TagIdIntType, UnionLayout,
 };
 use roc_mono::list_element_layout;
@@ -317,9 +317,9 @@ trait Backend<'a> {
         &mut Vec<'a, CallerProc<'a>>,
     );
 
-    fn function_symbol_to_string<'b, I>(
+    fn lambda_name_to_string<'b, I>(
         &self,
-        symbol: Symbol,
+        name: LambdaName,
         arguments: I,
         _lambda_set: Option<InLayout>,
         result: InLayout,
@@ -327,18 +327,27 @@ trait Backend<'a> {
     where
         I: Iterator<Item = InLayout<'b>>,
     {
+        use std::fmt::Write;
         use std::hash::{BuildHasher, Hash, Hasher};
 
-        // NOTE: due to randomness, this will not be consistent between runs
-        let mut state = roc_collections::all::BuildHasher::default().build_hasher();
+        let symbol = name.name();
+
+        let mut buf = String::with_capacity(1024);
+
         for a in arguments {
-            a.hash(&mut state);
+            write!(buf, "{:?}", self.interner().dbg_stable(a)).expect("capacity");
         }
 
         // lambda set should not matter; it should already be added as an argument
-        // lambda_set.hash(&mut state);
+        // but the niche of the lambda name may be the only thing differentiating two different
+        // implementations of a function with the same symbol
+        write!(buf, "{:?}", name.niche().dbg_stable(self.interner())).expect("capacity");
 
-        result.hash(&mut state);
+        write!(buf, "{:?}", self.interner().dbg_stable(result)).expect("capacity");
+
+        // NOTE: due to randomness, this will not be consistent between runs
+        let mut state = roc_collections::all::BuildHasher::default().build_hasher();
+        buf.hash(&mut state);
 
         let interns = self.interns();
         let ident_string = symbol.as_str(interns);
@@ -360,7 +369,7 @@ trait Backend<'a> {
     }
 
     fn list_argument(&mut self, list_layout: InLayout<'a>) -> ListArgument<'a> {
-        let element_layout = match self.interner().get(list_layout).repr {
+        let element_layout = match self.interner().get_repr(list_layout) {
             LayoutRepr::Builtin(Builtin::List(e)) => e,
             _ => unreachable!(),
         };
@@ -384,13 +393,13 @@ trait Backend<'a> {
     fn increment_fn_pointer(&mut self, layout: InLayout<'a>) -> Symbol {
         let box_layout = self
             .interner_mut()
-            .insert_no_semantic(LayoutRepr::Boxed(layout));
+            .insert_direct_no_semantic(LayoutRepr::Boxed(layout));
 
         let element_increment = self.debug_symbol("element_increment");
         let element_increment_symbol = self.build_indirect_inc(layout);
 
-        let element_increment_string = self.function_symbol_to_string(
-            element_increment_symbol,
+        let element_increment_string = self.lambda_name_to_string(
+            LambdaName::no_niche(element_increment_symbol),
             [box_layout].into_iter(),
             None,
             Layout::UNIT,
@@ -404,13 +413,13 @@ trait Backend<'a> {
     fn decrement_fn_pointer(&mut self, layout: InLayout<'a>) -> Symbol {
         let box_layout = self
             .interner_mut()
-            .insert_no_semantic(LayoutRepr::Boxed(layout));
+            .insert_direct_no_semantic(LayoutRepr::Boxed(layout));
 
         let element_decrement = self.debug_symbol("element_decrement");
         let element_decrement_symbol = self.build_indirect_dec(layout);
 
-        let element_decrement_string = self.function_symbol_to_string(
-            element_decrement_symbol,
+        let element_decrement_string = self.lambda_name_to_string(
+            LambdaName::no_niche(element_decrement_symbol),
             [box_layout].into_iter(),
             None,
             Layout::UNIT,
@@ -452,8 +461,8 @@ trait Backend<'a> {
         proc: Proc<'a>,
         layout_ids: &mut LayoutIds<'a>,
     ) -> (Vec<u8>, Vec<Relocation>, Vec<'a, (Symbol, String)>) {
-        let proc_name = self.function_symbol_to_string(
-            proc.name.name(),
+        let proc_name = self.lambda_name_to_string(
+            proc.name,
             proc.args.iter().map(|t| t.0),
             proc.closure_data_layout,
             proc.ret_layout,
@@ -683,15 +692,15 @@ trait Backend<'a> {
                             // implementation in `build_builtin` inlines some of the symbols.
                             return self.build_builtin(
                                 sym,
-                                func_sym.name(),
+                                *func_sym,
                                 arguments,
                                 arg_layouts,
                                 ret_layout,
                             );
                         }
 
-                        let fn_name = self.function_symbol_to_string(
-                            func_sym.name(),
+                        let fn_name = self.lambda_name_to_string(
+                            *func_sym,
                             arg_layouts.iter().copied(),
                             None,
                             *ret_layout,
@@ -801,7 +810,7 @@ trait Backend<'a> {
                 self.tag(sym, arguments, tag_layout, *tag_id, None);
             }
             Expr::ExprBox { symbol: value } => {
-                let element_layout = match self.interner().get(*layout).repr {
+                let element_layout = match self.interner().get_repr(*layout) {
                     LayoutRepr::Boxed(boxed) => boxed,
                     _ => unreachable!("{:?}", self.interner().dbg(*layout)),
                 };
@@ -960,7 +969,7 @@ trait Backend<'a> {
                 ret_layout,
             ),
             LowLevel::NumMul => self.build_num_mul(sym, &args[0], &args[1], ret_layout),
-            LowLevel::NumMulWrap => self.build_num_mul(sym, &args[0], &args[1], ret_layout),
+            LowLevel::NumMulWrap => self.build_num_mul_wrap(sym, &args[0], &args[1], ret_layout),
             LowLevel::NumDivTruncUnchecked | LowLevel::NumDivFrac => {
                 debug_assert_eq!(
                     2,
@@ -1030,7 +1039,7 @@ trait Backend<'a> {
                 );
                 self.build_num_sub_wrap(sym, &args[0], &args[1], ret_layout)
             }
-            LowLevel::NumSubSaturated => match self.interner().get(*ret_layout).repr {
+            LowLevel::NumSubSaturated => match self.interner().get_repr(*ret_layout) {
                 LayoutRepr::Builtin(Builtin::Int(int_width)) => self.build_fn_call(
                     sym,
                     bitcode::NUM_SUB_SATURATED_INT[int_width].to_string(),
@@ -1053,7 +1062,7 @@ trait Backend<'a> {
             },
             LowLevel::NumBitwiseAnd => {
                 if let LayoutRepr::Builtin(Builtin::Int(int_width)) =
-                    self.interner().get(*ret_layout).repr
+                    self.interner().get_repr(*ret_layout)
                 {
                     self.build_int_bitwise_and(sym, &args[0], &args[1], int_width)
                 } else {
@@ -1062,7 +1071,7 @@ trait Backend<'a> {
             }
             LowLevel::NumBitwiseOr => {
                 if let LayoutRepr::Builtin(Builtin::Int(int_width)) =
-                    self.interner().get(*ret_layout).repr
+                    self.interner().get_repr(*ret_layout)
                 {
                     self.build_int_bitwise_or(sym, &args[0], &args[1], int_width)
                 } else {
@@ -1071,7 +1080,7 @@ trait Backend<'a> {
             }
             LowLevel::NumBitwiseXor => {
                 if let LayoutRepr::Builtin(Builtin::Int(int_width)) =
-                    self.interner().get(*ret_layout).repr
+                    self.interner().get_repr(*ret_layout)
                 {
                     self.build_int_bitwise_xor(sym, &args[0], &args[1], int_width)
                 } else {
@@ -1079,14 +1088,14 @@ trait Backend<'a> {
                 }
             }
             LowLevel::And => {
-                if let LayoutRepr::Builtin(Builtin::Bool) = self.interner().get(*ret_layout).repr {
+                if let LayoutRepr::Builtin(Builtin::Bool) = self.interner().get_repr(*ret_layout) {
                     self.build_int_bitwise_and(sym, &args[0], &args[1], IntWidth::U8)
                 } else {
                     internal_error!("bitwise and on a non-integer")
                 }
             }
             LowLevel::Or => {
-                if let LayoutRepr::Builtin(Builtin::Bool) = self.interner().get(*ret_layout).repr {
+                if let LayoutRepr::Builtin(Builtin::Bool) = self.interner().get_repr(*ret_layout) {
                     self.build_int_bitwise_or(sym, &args[0], &args[1], IntWidth::U8)
                 } else {
                     internal_error!("bitwise or on a non-integer")
@@ -1094,7 +1103,7 @@ trait Backend<'a> {
             }
             LowLevel::NumShiftLeftBy => {
                 if let LayoutRepr::Builtin(Builtin::Int(int_width)) =
-                    self.interner().get(*ret_layout).repr
+                    self.interner().get_repr(*ret_layout)
                 {
                     self.build_int_shift_left(sym, &args[0], &args[1], int_width)
                 } else {
@@ -1103,7 +1112,7 @@ trait Backend<'a> {
             }
             LowLevel::NumShiftRightBy => {
                 if let LayoutRepr::Builtin(Builtin::Int(int_width)) =
-                    self.interner().get(*ret_layout).repr
+                    self.interner().get_repr(*ret_layout)
                 {
                     self.build_int_shift_right(sym, &args[0], &args[1], int_width)
                 } else {
@@ -1112,7 +1121,7 @@ trait Backend<'a> {
             }
             LowLevel::NumShiftRightZfBy => {
                 if let LayoutRepr::Builtin(Builtin::Int(int_width)) =
-                    self.interner().get(*ret_layout).repr
+                    self.interner().get_repr(*ret_layout)
                 {
                     self.build_int_shift_right_zero_fill(sym, &args[0], &args[1], int_width)
                 } else {
@@ -1121,14 +1130,17 @@ trait Backend<'a> {
             }
             LowLevel::Eq => {
                 debug_assert_eq!(2, args.len(), "Eq: expected to have exactly two argument");
+
+                let a = Layout::runtime_representation_in(arg_layouts[0], self.interner());
+                let b = Layout::runtime_representation_in(arg_layouts[1], self.interner());
+
                 debug_assert!(
-                    self.interner().eq_repr(arg_layouts[0], arg_layouts[1],),
-                    "Eq: expected all arguments of to have the same layout"
+                    self.interner().eq_repr(a, b),
+                    "Eq: expected all arguments to have the same layout, but {} != {}",
+                    self.interner().dbg(a),
+                    self.interner().dbg(b),
                 );
-                debug_assert!(
-                    self.interner().eq_repr(Layout::BOOL, *ret_layout,),
-                    "Eq: expected to have return layout of type Bool"
-                );
+
                 self.build_eq(sym, &args[0], &args[1], &arg_layouts[0])
             }
             LowLevel::NotEq => {
@@ -1137,9 +1149,15 @@ trait Backend<'a> {
                     args.len(),
                     "NotEq: expected to have exactly two argument"
                 );
+
+                let a = Layout::runtime_representation_in(arg_layouts[0], self.interner());
+                let b = Layout::runtime_representation_in(arg_layouts[1], self.interner());
+
                 debug_assert!(
-                    self.interner().eq_repr(arg_layouts[0], arg_layouts[1],),
-                    "NotEq: expected all arguments of to have the same layout"
+                    self.interner().eq_repr(a, b),
+                    "NotEq: expected all arguments to have the same layout, but {} != {}",
+                    self.interner().dbg(a),
+                    self.interner().dbg(b),
                 );
                 debug_assert!(
                     self.interner().eq_repr(Layout::BOOL, *ret_layout,),
@@ -1523,13 +1541,13 @@ trait Backend<'a> {
                 ret_layout,
             ),
             LowLevel::StrToNum => {
-                let number_layout = match self.interner().get(*ret_layout).repr {
+                let number_layout = match self.interner().get_repr(*ret_layout) {
                     LayoutRepr::Struct(field_layouts) => field_layouts[0], // TODO: why is it sometimes a struct?
                     _ => unreachable!(),
                 };
 
                 // match on the return layout to figure out which zig builtin we need
-                let intrinsic = match self.interner().get(number_layout).repr {
+                let intrinsic = match self.interner().get_repr(number_layout) {
                     LayoutRepr::Builtin(Builtin::Int(int_width)) => &bitcode::STR_TO_INT[int_width],
                     LayoutRepr::Builtin(Builtin::Float(float_width)) => {
                         &bitcode::STR_TO_FLOAT[float_width]
@@ -1546,10 +1564,25 @@ trait Backend<'a> {
                     args.len(),
                     "RefCountGetPtr: expected to have exactly one argument"
                 );
+
+                debug_assert_eq!(
+                    self.interner().stack_size_and_alignment(arg_layouts[0]),
+                    (8, 8),
+                    "cannot pointer cast from source: {}",
+                    self.interner().dbg(arg_layouts[0])
+                );
+
+                debug_assert_eq!(
+                    self.interner().stack_size_and_alignment(*ret_layout),
+                    (8, 8),
+                    "cannot pointer cast to target: {}",
+                    self.interner().dbg(*ret_layout)
+                );
+
                 self.build_ptr_cast(sym, &args[0])
             }
             LowLevel::PtrWrite => {
-                let element_layout = match self.interner().get(*ret_layout).repr {
+                let element_layout = match self.interner().get_repr(*ret_layout) {
                     LayoutRepr::Boxed(boxed) => boxed,
                     _ => unreachable!("cannot write to {:?}", self.interner().dbg(*ret_layout)),
                 };
@@ -1600,7 +1633,7 @@ trait Backend<'a> {
             ),
             LowLevel::NumToStr => {
                 let arg_layout = arg_layouts[0];
-                let intrinsic = match self.interner().get(arg_layout).repr {
+                let intrinsic = match self.interner().get_repr(arg_layout) {
                     LayoutRepr::Builtin(Builtin::Int(width)) => &bitcode::STR_FROM_INT[width],
                     LayoutRepr::Builtin(Builtin::Float(width)) => &bitcode::STR_FROM_FLOAT[width],
                     LayoutRepr::Builtin(Builtin::Decimal) => bitcode::DEC_TO_STR,
@@ -1614,12 +1647,12 @@ trait Backend<'a> {
                 self.build_fn_call(sym, intrinsic, args, arg_layouts, ret_layout);
             }
             LowLevel::NumIntCast => {
-                let source_width = match self.interner().get(arg_layouts[0]).repr {
+                let source_width = match self.interner().get_repr(arg_layouts[0]) {
                     LayoutRepr::Builtin(Builtin::Int(width)) => width,
                     _ => unreachable!(),
                 };
 
-                let target_width = match self.interner().get(*ret_layout).repr {
+                let target_width = match self.interner().get_repr(*ret_layout) {
                     LayoutRepr::Builtin(Builtin::Int(width)) => width,
                     _ => unreachable!(),
                 };
@@ -1783,6 +1816,10 @@ trait Backend<'a> {
                 );
             }
 
+            LowLevel::NumCompare => {
+                self.build_num_cmp(sym, &args[0], &args[1], &arg_layouts[0]);
+            }
+
             x => todo!("low level, {:?}", x),
         }
     }
@@ -1792,12 +1829,12 @@ trait Backend<'a> {
     fn build_builtin(
         &mut self,
         sym: &Symbol,
-        func_sym: Symbol,
+        func_name: LambdaName,
         args: &'a [Symbol],
         arg_layouts: &[InLayout<'a>],
         ret_layout: &InLayout<'a>,
     ) {
-        match func_sym {
+        match func_name.name() {
             Symbol::NUM_IS_ZERO => {
                 debug_assert_eq!(
                     1,
@@ -1820,8 +1857,8 @@ trait Backend<'a> {
             }
             Symbol::LIST_GET | Symbol::LIST_SET | Symbol::LIST_REPLACE | Symbol::LIST_APPEND => {
                 // TODO: This is probably simple enough to be worth inlining.
-                let fn_name = self.function_symbol_to_string(
-                    func_sym,
+                let fn_name = self.lambda_name_to_string(
+                    func_name,
                     arg_layouts.iter().copied(),
                     None,
                     *ret_layout,
@@ -1852,8 +1889,8 @@ trait Backend<'a> {
             }
             Symbol::STR_IS_VALID_SCALAR => {
                 // just call the function
-                let fn_name = self.function_symbol_to_string(
-                    func_sym,
+                let fn_name = self.lambda_name_to_string(
+                    func_name,
                     arg_layouts.iter().copied(),
                     None,
                     *ret_layout,
@@ -1864,8 +1901,8 @@ trait Backend<'a> {
             }
             _other => {
                 // just call the function
-                let fn_name = self.function_symbol_to_string(
-                    func_sym,
+                let fn_name = self.lambda_name_to_string(
+                    func_name,
                     arg_layouts.iter().copied(),
                     None,
                     *ret_layout,
@@ -1939,6 +1976,15 @@ trait Backend<'a> {
 
     /// build_num_mul stores `src1 * src2` into dst.
     fn build_num_mul(&mut self, dst: &Symbol, src1: &Symbol, src2: &Symbol, layout: &InLayout<'a>);
+
+    /// build_num_mul_wrap stores `src1 * src2` into dst.
+    fn build_num_mul_wrap(
+        &mut self,
+        dst: &Symbol,
+        src1: &Symbol,
+        src2: &Symbol,
+        layout: &InLayout<'a>,
+    );
 
     /// build_num_mul stores `src1 / src2` into dst.
     fn build_num_div(&mut self, dst: &Symbol, src1: &Symbol, src2: &Symbol, layout: &InLayout<'a>);
@@ -2023,6 +2069,14 @@ trait Backend<'a> {
 
     /// build_not stores the result of `!src` into dst.
     fn build_not(&mut self, dst: &Symbol, src: &Symbol, arg_layout: &InLayout<'a>);
+
+    fn build_num_cmp(
+        &mut self,
+        dst: &Symbol,
+        src1: &Symbol,
+        src2: &Symbol,
+        arg_layout: &InLayout<'a>,
+    );
 
     /// build_num_lt stores the result of `src1 < src2` into dst.
     fn build_num_lt(

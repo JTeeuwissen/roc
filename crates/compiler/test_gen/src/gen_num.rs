@@ -3924,3 +3924,69 @@ fn bool_in_switch() {
         bool
     );
 }
+
+#[test]
+#[cfg(any(feature = "gen-llvm", feature = "gen-wasm"))]
+fn add_checked_dec() {
+    assert_evals_to!(
+        indoc!(
+            r#"
+            Num.addChecked 2.0dec 4.0dec == Ok 6.0dec
+            "#
+        ),
+        true,
+        bool
+    );
+}
+
+#[test]
+#[cfg(any(feature = "gen-llvm", feature = "gen-wasm"))]
+fn sub_checked_dec() {
+    assert_evals_to!(
+        indoc!(
+            r#"
+            Num.subChecked 5.0dec 2.0dec == Ok 3.0dec
+            "#
+        ),
+        true,
+        bool
+    );
+}
+
+#[test]
+#[cfg(any(feature = "gen-llvm", feature = "gen-wasm"))]
+fn mul_checked_dec() {
+    assert_evals_to!(
+        indoc!(
+            r#"
+            Num.mulChecked 5.0dec 2.0dec == Ok 10.0dec
+            "#
+        ),
+        true,
+        bool
+    );
+}
+
+#[test]
+#[cfg(any(feature = "gen-llvm", feature = "gen-dev", feature = "gen-wasm"))]
+fn num_min() {
+    assert_evals_to!(r#"Num.min 0 0"#, 0, i64);
+    assert_evals_to!(r#"Num.min 1 2"#, 1, i64);
+    assert_evals_to!(r#"Num.min 2 1"#, 1, i64);
+    assert_evals_to!(r#"Num.min 2 -2"#, -2, i64);
+    assert_evals_to!(r#"Num.min -2 2"#, -2, i64);
+    assert_evals_to!(r#"Num.min Num.minI64 Num.maxI64"#, i64::MIN, i64);
+    assert_evals_to!(r#"Num.min Num.maxI64 Num.minI64"#, i64::MIN, i64);
+}
+
+#[test]
+#[cfg(any(feature = "gen-llvm", feature = "gen-dev", feature = "gen-wasm"))]
+fn num_max() {
+    assert_evals_to!(r#"Num.max 0 0"#, 0, i64);
+    assert_evals_to!(r#"Num.max 1 2"#, 2, i64);
+    assert_evals_to!(r#"Num.max 2 1"#, 2, i64);
+    assert_evals_to!(r#"Num.max 2 -2"#, 2, i64);
+    assert_evals_to!(r#"Num.max -2 2"#, 2, i64);
+    assert_evals_to!(r#"Num.max Num.minI64 Num.maxI64"#, i64::MAX, i64);
+    assert_evals_to!(r#"Num.max Num.maxI64 Num.minI64"#, i64::MAX, i64);
+}

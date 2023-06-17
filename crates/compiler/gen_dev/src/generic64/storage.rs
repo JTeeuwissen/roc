@@ -23,6 +23,8 @@ use RegStorage::*;
 use StackStorage::*;
 use Storage::*;
 
+use super::RegisterWidth;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RegStorage<GeneralReg: RegTrait, FloatReg: RegTrait> {
     General(GeneralReg),
@@ -343,10 +345,19 @@ impl<
                 sign_extend,
             }) => {
                 let reg = self.get_general_reg(buf);
+
+                let register_width = match size {
+                    8 => RegisterWidth::W64,
+                    4 => RegisterWidth::W32,
+                    2 => RegisterWidth::W16,
+                    1 => RegisterWidth::W8,
+                    _ => internal_error!("Invalid size: {size}"),
+                };
+
                 if sign_extend {
-                    ASM::movsx_reg64_base32(buf, reg, base_offset, size as u8);
+                    ASM::movsx_reg_base32(buf, register_width, reg, base_offset);
                 } else {
-                    ASM::movzx_reg64_base32(buf, reg, base_offset, size as u8);
+                    ASM::movzx_reg_base32(buf, register_width, reg, base_offset);
                 }
                 self.general_used_regs.push((reg, *sym));
                 self.symbol_storage_map.insert(*sym, Reg(General(reg)));
@@ -469,10 +480,18 @@ impl<
             }) => {
                 debug_assert!(*size <= 8);
 
+                let register_width = match size {
+                    8 => RegisterWidth::W64,
+                    4 => RegisterWidth::W32,
+                    2 => RegisterWidth::W16,
+                    1 => RegisterWidth::W8,
+                    _ => internal_error!("Invalid size: {size}"),
+                };
+
                 if *sign_extend {
-                    ASM::movsx_reg64_base32(buf, reg, *base_offset, *size as u8)
+                    ASM::movsx_reg_base32(buf, register_width, reg, *base_offset)
                 } else {
-                    ASM::movzx_reg64_base32(buf, reg, *base_offset, *size as u8)
+                    ASM::movzx_reg_base32(buf, register_width, reg, *base_offset)
                 }
             }
             Stack(Complex { size, .. }) => {
@@ -665,7 +684,7 @@ impl<
 
         let mut in_layout = *layout;
         let layout = loop {
-            match layout_interner.get(in_layout).repr {
+            match layout_interner.get_repr(in_layout) {
                 LayoutRepr::LambdaSet(inner) => in_layout = inner.runtime_representation(),
                 other => break other,
             }
@@ -728,7 +747,7 @@ impl<
         sym: &Symbol,
         layout: &InLayout<'a>,
     ) {
-        match layout_interner.get(*layout).repr {
+        match layout_interner.get_repr(*layout) {
             LayoutRepr::Builtin(builtin) => match builtin {
                 Builtin::Int(int_width) => match int_width {
                     IntWidth::I128 | IntWidth::U128 => {
@@ -1104,7 +1123,7 @@ impl<
         symbol: Symbol,
         layout: InLayout<'a>,
     ) {
-        match layout_interner.get(layout).repr {
+        match layout_interner.get_repr(layout) {
             single_register_layouts!() | pointer_layouts!() => {
                 let base_offset = self.claim_stack_size(8);
                 self.symbol_storage_map.insert(
@@ -1169,7 +1188,7 @@ impl<
         layout: InLayout<'a>,
         base_offset: i32,
     ) {
-        match layout_interner.get(layout).repr {
+        match layout_interner.get_repr(layout) {
             single_register_integers!() | pointer_layouts!() => {
                 let reg = self.load_to_general_reg(buf, &symbol);
                 ASM::mov_base32_reg64(buf, base_offset, reg);
@@ -1491,7 +1510,7 @@ impl<
 }
 
 fn is_primitive(layout_interner: &mut STLayoutInterner<'_>, layout: InLayout<'_>) -> bool {
-    match layout_interner.get(layout).repr {
+    match layout_interner.get_repr(layout) {
         single_register_layouts!() => true,
         pointer_layouts!() => true,
         LayoutRepr::LambdaSet(lambda_set) => {

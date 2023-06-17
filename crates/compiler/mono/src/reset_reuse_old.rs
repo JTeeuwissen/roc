@@ -147,7 +147,7 @@ fn function_s<'a, 'i>(
                 arguments,
             } => {
                 match may_reuse(
-                    &env.interner,
+                    env.interner,
                     env.target_info,
                     *tag_layout,
                     *tag_id,
@@ -432,9 +432,9 @@ fn insert_reset<'a>(
         symbol: x,
         update_mode: w.update_mode,
     };
-    let layout = env
-        .interner
-        .insert(Layout::no_semantic(LayoutRepr::Union(union_layout)));
+    let layout = env.interner.insert(Layout::no_semantic(
+        LayoutRepr::Union(union_layout).direct(),
+    ));
 
     stmt = env
         .arena
@@ -714,13 +714,13 @@ fn function_r_branch_body<'a, 'i>(
             scrutinee,
             layout,
             tag_id,
-        } => match env.interner.chase_recursive(*layout).repr {
+        } => match env.interner.chase_recursive(*layout) {
             LayoutRepr::Union(UnionLayout::NonRecursive(_)) => temp,
             LayoutRepr::Union(union_layout) if !union_layout.tag_is_null(*tag_id) => {
                 let ctor_info = CtorInfo {
                     layout: union_layout,
                     id: *tag_id,
-                    in_layout: layout.clone(),
+                    in_layout: *layout,
                 };
                 function_d(env, *scrutinee, &ctor_info, temp)
             }

@@ -49,8 +49,8 @@ pub(crate) fn inserts(benchmarks_path: &Path, roc_path: &Path, output_path: &Pat
 
             File::create(Path::new(output_path).join(format!(
                 "{}-{}.txt",
-                configuration.name.replace("/", ""),
-                benchmark.name.replace("/", "")
+                configuration.name.replace('/', ""),
+                benchmark.name.replace('/', "")
             )))
             .unwrap()
             .write_all(stderr.as_bytes())
@@ -111,10 +111,10 @@ pub(crate) fn inserts(benchmarks_path: &Path, roc_path: &Path, output_path: &Pat
                 result.static_incs, result.static_decs, result.static_resets, result.static_reuses
             );
         }
-        println!("");
+        println!();
     }
 
-    println!("");
+    println!();
     println!(
         "Dynamic\t{}",
         BENCHMARKS
@@ -144,7 +144,7 @@ pub(crate) fn inserts(benchmarks_path: &Path, roc_path: &Path, output_path: &Pat
                 result.dynamic_deallocs
             );
         }
-        println!("");
+        println!();
     }
 }
 

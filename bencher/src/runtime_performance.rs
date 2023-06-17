@@ -84,7 +84,7 @@ fn run_memory_benchmarks(
         let mut benchmark_results: [String; BENCHMARKS.len()] = Default::default();
 
         for (bi, _) in BENCHMARKS.iter().enumerate() {
-            let executable_path = executable_paths[ci][bi.clone()].clone();
+            let executable_path = executable_paths[ci][bi].clone();
             let output = Command::new("/usr/bin/time")
                 .args(["-v", executable_path.as_str()])
                 .stderr(Stdio::piped())
@@ -92,7 +92,7 @@ fn run_memory_benchmarks(
                 .expect("failed to execute process");
             let stderr = std::str::from_utf8(&output.stderr).expect("invalid utf8");
             let memory_usage = memory_usage_regex
-                .captures(&stderr)
+                .captures(stderr)
                 .unwrap()
                 .get(1)
                 .unwrap()
@@ -124,13 +124,13 @@ fn run_time_benchmarks(
                 .into_iter()
                 .enumerate()
                 .flat_map(|(ci, configuration)| {
-                    let executable_path = executable_paths[ci][bi.clone()].clone();
+                    let executable_path = executable_paths[ci][bi].clone();
                     [
                         "--command-name".to_string(),
                         format!(
                             "{} {}",
-                            configuration.name.replace("/", ""),
-                            benchmark.name.replace("/", ""),
+                            configuration.name.replace('/', ""),
+                            benchmark.name.replace('/', ""),
                         ),
                         format!("ulimit -s unlimited && \"{}\"", executable_path),
                     ]
@@ -171,8 +171,8 @@ fn create_benchmark_paths(
             executable_paths[ci][bi] = binaries_path
                 .join(format!(
                     "{} {}",
-                    configuration.name.replace("/", ""),
-                    benchmark.name.replace("/", ""),
+                    configuration.name.replace('/', ""),
+                    benchmark.name.replace('/', ""),
                 ))
                 .as_path()
                 .to_str()
@@ -184,7 +184,7 @@ fn create_benchmark_paths(
     executable_paths
 }
 
-fn build_benchmarks<'a>(
+fn build_benchmarks(
     compiler_paths: [String; CONFIGURATIONS.len()],
     benchmarks_path: &Path,
     executable_paths: &[[String; BENCHMARKS.len()]; CONFIGURATIONS.len()],
@@ -208,7 +208,7 @@ fn build_benchmarks<'a>(
                         .expect("failed to execute process");
                     let stdout = std::str::from_utf8(&output.stdout).expect("invalid utf8");
                     let relative_output_path = build_output_regex
-                        .captures(&stdout)
+                        .captures(stdout)
                         .unwrap()
                         .get(1)
                         .unwrap()
@@ -241,7 +241,7 @@ fn build_benchmarks<'a>(
                             "PATH",
                             env::var("PATH")
                                 .unwrap()
-                                .split(":")
+                                .split(':')
                                 .filter(|s| !s.starts_with("/nix/"))
                                 .collect::<Vec<_>>()
                                 .join(":"),

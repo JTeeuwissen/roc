@@ -3140,7 +3140,6 @@ fn update<'a>(
                             &layout_interner,
                             module_id,
                             ident_ids,
-                            state.target_info,
                             &mut update_mode_ids,
                             &mut state.procedures,
                         );
@@ -3907,7 +3906,7 @@ fn load_module<'a>(
         "Encode", ModuleId::ENCODE
         "Decode", ModuleId::DECODE
         "Hash", ModuleId::HASH
-        "Json", ModuleId::JSON
+        "TotallyNotJson", ModuleId::JSON
     }
 
     let (filename, opt_shorthand) = module_name_to_path(src_dir, &module_name, arc_shorthands);

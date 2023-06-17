@@ -14,7 +14,7 @@ use roc_target::TargetInfo;
 
 use crate::layout::LayoutRepr;
 
-use super::{LambdaSet, Layout, SeenRecPtrs, SemanticRepr, UnionLayout};
+use super::{LambdaSet, Layout, LayoutWrapper, SeenRecPtrs, SemanticRepr, UnionLayout};
 
 macro_rules! cache_interned_layouts {
     ($($i:literal, $name:ident, $vis:vis, $layout:expr)*; $total_constants:literal) => {
@@ -50,7 +50,7 @@ macro_rules! cache_interned_layouts {
 macro_rules! nosema {
     ($r:expr) => {
         Layout {
-            repr: $r,
+            repr: $r.direct(),
             semantic: SemanticRepr::NONE,
         }
     };
@@ -76,8 +76,10 @@ cache_interned_layouts! {
     16, STR,  pub, nosema!(LayoutRepr::STR)
     17, OPAQUE_PTR,  pub, nosema!(LayoutRepr::OPAQUE_PTR)
     18, NAKED_RECURSIVE_PTR,  pub(super), nosema!(LayoutRepr::RecursivePointer(Layout::VOID))
+    19, STR_PTR, pub, nosema!(LayoutRepr::Boxed(Layout::STR))
+    20, LIST_U8, pub, nosema!(LayoutRepr::Builtin(crate::layout::Builtin::List(Layout::U8)))
 
-    ; 19
+    ; 21
 }
 
 macro_rules! impl_to_from_int_width {
@@ -119,11 +121,11 @@ impl_to_from_int_width! {
 
 impl<'a> Layout<'a> {
     pub(super) const VOID_NAKED: Self = Layout {
-        repr: LayoutRepr::Union(UnionLayout::NonRecursive(&[])),
+        repr: LayoutRepr::Union(UnionLayout::NonRecursive(&[])).direct(),
         semantic: SemanticRepr::NONE,
     };
     pub(super) const UNIT_NAKED: Self = Layout {
-        repr: LayoutRepr::Struct(&[]),
+        repr: LayoutRepr::Struct(&[]).direct(),
         semantic: SemanticRepr::EMPTY_RECORD,
     };
 
@@ -154,8 +156,8 @@ pub trait LayoutInterner<'a>: Sized {
 
     /// Interns a value with no semantic representation, returning its interned representation.
     /// If the value has been interned before, the old interned representation will be re-used.
-    fn insert_no_semantic(&mut self, repr: LayoutRepr<'a>) -> InLayout<'a> {
-        self.insert(Layout::no_semantic(repr))
+    fn insert_direct_no_semantic(&mut self, repr: LayoutRepr<'a>) -> InLayout<'a> {
+        self.insert(Layout::no_semantic(repr.direct()))
     }
 
     /// Creates a [LambdaSet], including caching the [LayoutRepr::LambdaSet] representation of the
@@ -181,60 +183,78 @@ pub trait LayoutInterner<'a>: Sized {
     //
     // Convenience methods
 
+    fn get_repr(&self, mut key: InLayout<'a>) -> LayoutRepr<'a> {
+        loop {
+            match self.get(key).repr {
+                LayoutWrapper::Direct(repr) => return repr,
+                LayoutWrapper::Newtype(inner) => key = inner,
+            }
+        }
+    }
+
+    fn get_semantic(&self, key: InLayout<'a>) -> SemanticRepr<'a> {
+        self.get(key).semantic
+    }
+
     fn eq_repr(&self, a: InLayout<'a>, b: InLayout<'a>) -> bool {
-        self.get(a).repr == self.get(b).repr
+        self.get_repr(a) == self.get_repr(b)
     }
 
     fn target_info(&self) -> TargetInfo;
 
     fn alignment_bytes(&self, layout: InLayout<'a>) -> u32 {
-        self.get(layout).alignment_bytes(self, self.target_info())
+        self.get_repr(layout)
+            .alignment_bytes(self, self.target_info())
     }
 
     fn allocation_alignment_bytes(&self, layout: InLayout<'a>) -> u32 {
-        self.get(layout)
+        self.get_repr(layout)
             .allocation_alignment_bytes(self, self.target_info())
     }
 
     fn stack_size(&self, layout: InLayout<'a>) -> u32 {
-        self.get(layout).stack_size(self, self.target_info())
+        self.get_repr(layout).stack_size(self, self.target_info())
     }
 
     fn stack_size_and_alignment(&self, layout: InLayout<'a>) -> (u32, u32) {
-        self.get(layout)
+        self.get_repr(layout)
             .stack_size_and_alignment(self, self.target_info())
     }
 
     fn stack_size_without_alignment(&self, layout: InLayout<'a>) -> u32 {
-        self.get(layout)
+        self.get_repr(layout)
             .stack_size_without_alignment(self, self.target_info())
     }
 
     fn contains_refcounted(&self, layout: InLayout<'a>) -> bool {
-        self.get(layout).contains_refcounted(self)
+        self.get_repr(layout).contains_refcounted(self)
     }
 
     fn is_refcounted(&self, layout: InLayout<'a>) -> bool {
-        self.get(layout).is_refcounted()
+        self.get_repr(layout).is_refcounted()
     }
 
     fn is_passed_by_reference(&self, layout: InLayout<'a>) -> bool {
-        self.get(layout)
+        self.get_repr(layout)
             .is_passed_by_reference(self, self.target_info())
     }
 
-    fn runtime_representation(&self, layout: InLayout<'a>) -> Layout<'a> {
-        self.get(layout).runtime_representation(self)
+    fn runtime_representation(&self, layout: InLayout<'a>) -> LayoutRepr<'a> {
+        self.get_repr(self.runtime_representation_in(layout))
     }
 
     fn runtime_representation_in(&self, layout: InLayout<'a>) -> InLayout<'a> {
         Layout::runtime_representation_in(layout, self)
     }
 
-    fn chase_recursive(&self, mut layout: InLayout<'a>) -> Layout<'a> {
+    fn has_varying_stack_size(&self, layout: InLayout<'a>, arena: &'a Bump) -> bool {
+        self.get_repr(layout).has_varying_stack_size(self, arena)
+    }
+
+    fn chase_recursive(&self, mut layout: InLayout<'a>) -> LayoutRepr<'a> {
         loop {
-            let lay = self.get(layout);
-            match lay.repr {
+            let lay = self.get_repr(layout);
+            match lay {
                 LayoutRepr::RecursivePointer(l) => layout = l,
                 _ => return lay,
             }
@@ -243,7 +263,7 @@ pub trait LayoutInterner<'a>: Sized {
 
     fn chase_recursive_in(&self, mut layout: InLayout<'a>) -> InLayout<'a> {
         loop {
-            match self.get(layout).repr {
+            match self.get_repr(layout) {
                 LayoutRepr::RecursivePointer(l) => layout = l,
                 _ => return layout,
             }
@@ -251,7 +271,7 @@ pub trait LayoutInterner<'a>: Sized {
     }
 
     fn safe_to_memcpy(&self, layout: InLayout<'a>) -> bool {
-        self.get(layout).safe_to_memcpy(self)
+        self.get_repr(layout).safe_to_memcpy(self)
     }
 
     /// Checks if two layouts are equivalent up to isomorphism.
@@ -298,7 +318,7 @@ pub trait LayoutInterner<'a>: Sized {
     {
         use LayoutRepr::*;
 
-        match self.get(layout).repr {
+        match self.get_repr(layout) {
             Builtin(builtin) => builtin.to_doc(alloc, self, seen_rec, parens),
             Struct(field_layouts) => {
                 let fields_doc = field_layouts
@@ -387,12 +407,28 @@ pub trait LayoutInterner<'a>: Sized {
     ///     return false;
     /// }
     /// ```
-    fn dbg_deep<'r>(&'r self, layout: InLayout<'a>) -> dbg::Dbg<'a, 'r, Self> {
-        dbg::Dbg(self, layout)
+    fn dbg_deep<'r>(&'r self, layout: InLayout<'a>) -> dbg_deep::Dbg<'a, 'r, Self> {
+        dbg_deep::Dbg(self, layout)
     }
 
-    fn dbg_deep_iter<'r>(&'r self, layouts: &'a [InLayout<'a>]) -> dbg::DbgFields<'a, 'r, Self> {
-        dbg::DbgFields(self, layouts)
+    fn dbg_deep_iter<'r>(
+        &'r self,
+        layouts: &'a [InLayout<'a>],
+    ) -> dbg_deep::DbgFields<'a, 'r, Self> {
+        dbg_deep::DbgFields(self, layouts)
+    }
+
+    /// Similar to `Self::dbg_deep`, but does not display the interned name of symbols. This keeps
+    /// the output consistent in a multi-threaded (test) run
+    fn dbg_stable<'r>(&'r self, layout: InLayout<'a>) -> dbg_stable::Dbg<'a, 'r, Self> {
+        dbg_stable::Dbg(self, layout)
+    }
+
+    fn dbg_stable_iter<'r>(
+        &'r self,
+        layouts: &'a [InLayout<'a>],
+    ) -> dbg_stable::DbgFields<'a, 'r, Self> {
+        dbg_stable::DbgFields(self, layouts)
     }
 }
 
@@ -432,6 +468,8 @@ impl std::fmt::Debug for InLayout<'_> {
             Layout::STR => f.write_str("InLayout(STR)"),
             Layout::OPAQUE_PTR => f.write_str("InLayout(OPAQUE_PTR)"),
             Layout::NAKED_RECURSIVE_PTR => f.write_str("InLayout(NAKED_RECURSIVE_PTR)"),
+            Layout::STR_PTR => f.write_str("InLayout(STR_PTR)"),
+            Layout::LIST_U8 => f.write_str("InLayout(LIST_U8)"),
             _ => f.debug_tuple("InLayout").field(&self.0).finish(),
         }
     }
@@ -453,6 +491,10 @@ impl<'a> InLayout<'a> {
     /// ```
     pub(crate) const unsafe fn from_index(index: usize) -> Self {
         Self(index, PhantomData)
+    }
+
+    pub(crate) const fn newtype(self) -> LayoutWrapper<'a> {
+        LayoutWrapper::Newtype(self)
     }
 
     pub fn index(&self) -> usize {
@@ -665,7 +707,7 @@ impl<'a> GlobalLayoutInterner<'a> {
             ..normalized
         };
         let lambda_set_layout = Layout {
-            repr: LayoutRepr::LambdaSet(full_lambda_set),
+            repr: LayoutRepr::LambdaSet(full_lambda_set).direct(),
             semantic: SemanticRepr::NONE,
         };
 
@@ -974,7 +1016,7 @@ macro_rules! st_impl {
                     full_layout: slot,
                 };
                 let lay = Layout {
-                    repr: LayoutRepr::LambdaSet(lambda_set),
+                    repr: LayoutRepr::LambdaSet(lambda_set).direct(),
                     semantic: SemanticRepr::NONE
                 };
                 self.vec[slot.0] = lay;
@@ -1035,7 +1077,7 @@ mod reify {
     use bumpalo::{collections::Vec, Bump};
     use roc_module::symbol::Symbol;
 
-    use crate::layout::{Builtin, LambdaSet, Layout, LayoutRepr, UnionLayout};
+    use crate::layout::{Builtin, LambdaSet, Layout, LayoutRepr, LayoutWrapper, UnionLayout};
 
     use super::{InLayout, LayoutInterner, NeedsRecursionPointerFixup};
 
@@ -1046,7 +1088,24 @@ mod reify {
         slot: InLayout<'a>,
         normalized_layout: Layout<'a>,
     ) -> Layout<'a> {
-        let repr = match normalized_layout.repr {
+        let Layout { repr, semantic } = normalized_layout;
+        let reified_repr = match repr {
+            LayoutWrapper::Direct(repr) => {
+                reify_recursive_layout_repr(arena, interner, slot, repr).direct()
+            }
+            LayoutWrapper::Newtype(inner) => reify_layout(arena, interner, slot, inner).newtype(),
+        };
+
+        Layout::new(reified_repr, semantic)
+    }
+
+    fn reify_recursive_layout_repr<'a>(
+        arena: &'a Bump,
+        interner: &mut impl LayoutInterner<'a>,
+        slot: InLayout<'a>,
+        repr: LayoutRepr<'a>,
+    ) -> LayoutRepr<'a> {
+        match repr {
             LayoutRepr::Builtin(builtin) => {
                 LayoutRepr::Builtin(reify_builtin(arena, interner, slot, builtin))
             }
@@ -1063,10 +1122,6 @@ mod reify {
                 // another recursive union's layout, do not change it.
                 LayoutRepr::RecursivePointer(if l == Layout::VOID { slot } else { l })
             }
-        };
-        Layout {
-            repr,
-            semantic: normalized_layout.semantic,
         }
     }
 
@@ -1244,7 +1299,7 @@ mod equiv {
                 continue;
             }
             use LayoutRepr::*;
-            match (interner.get(l1).repr, interner.get(l2).repr) {
+            match (interner.get_repr(l1), interner.get_repr(l2)) {
                 (RecursivePointer(rec), _) => stack.push((rec, l2)),
                 (_, RecursivePointer(rec)) => stack.push((l1, rec)),
                 (Builtin(b1), Builtin(b2)) => {
@@ -1337,10 +1392,10 @@ mod equiv {
     }
 }
 
-pub mod dbg {
+pub mod dbg_deep {
     use roc_module::symbol::Symbol;
 
-    use crate::layout::{Builtin, LambdaSet, Layout, LayoutRepr, UnionLayout};
+    use crate::layout::{Builtin, LambdaSet, LayoutRepr, UnionLayout};
 
     use super::{InLayout, LayoutInterner};
 
@@ -1348,7 +1403,8 @@ pub mod dbg {
 
     impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for Dbg<'a, 'r, I> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Layout { repr, semantic } = self.0.get(self.1);
+            let repr = self.0.get_repr(self.1);
+            let semantic = self.0.get_semantic(self.1);
 
             f.debug_struct("Layout")
                 .field("repr", &DbgRepr(self.0, &repr))
@@ -1495,6 +1551,179 @@ pub mod dbg {
     }
 }
 
+/// Provides a stable debug output
+///
+/// The debug output defined in `dbg_deep` uses the `Symbol` `std::fmt::Debug` instance, which uses
+/// interned string names to make the output easier to interpret. That is useful for manual
+/// debugging, but the interned strings are not stable in a multi-threaded context (e.g. when
+/// running `cargo test`). The output of this module is always stable.
+pub mod dbg_stable {
+    use roc_module::symbol::Symbol;
+
+    use crate::layout::{Builtin, LambdaSet, LayoutRepr, SemanticRepr, UnionLayout};
+
+    use super::{InLayout, LayoutInterner};
+
+    pub struct Dbg<'a, 'r, I: LayoutInterner<'a>>(pub &'r I, pub InLayout<'a>);
+
+    impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for Dbg<'a, 'r, I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let repr = self.0.get_repr(self.1);
+            let semantic = self.0.get_semantic(self.1);
+
+            struct ConsistentSemanticRepr<'a>(SemanticRepr<'a>);
+
+            impl std::fmt::Debug for ConsistentSemanticRepr<'_> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    self.0.fmt_consistent(f)
+                }
+            }
+
+            f.debug_struct("Layout")
+                .field("repr", &DbgRepr(self.0, &repr))
+                .field("semantic", &ConsistentSemanticRepr(semantic))
+                .finish()
+        }
+    }
+
+    pub struct DbgFields<'a, 'r, I: LayoutInterner<'a>>(pub &'r I, pub &'a [InLayout<'a>]);
+
+    impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for DbgFields<'a, 'r, I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_list()
+                .entries(self.1.iter().map(|l| Dbg(self.0, *l)))
+                .finish()
+        }
+    }
+
+    struct DbgRepr<'a, 'r, I: LayoutInterner<'a>>(&'r I, &'r LayoutRepr<'a>);
+
+    impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for DbgRepr<'a, 'r, I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self.1 {
+                LayoutRepr::Builtin(b) => f
+                    .debug_tuple("Builtin")
+                    .field(&DbgBuiltin(self.0, *b))
+                    .finish(),
+                LayoutRepr::Struct(field_layouts) => f
+                    .debug_struct("Struct")
+                    .field("fields", &DbgFields(self.0, field_layouts))
+                    .finish(),
+                LayoutRepr::Boxed(b) => f.debug_tuple("Boxed").field(&Dbg(self.0, *b)).finish(),
+                LayoutRepr::Union(un) => f
+                    .debug_tuple("Union")
+                    .field(&DbgUnion(self.0, *un))
+                    .finish(),
+                LayoutRepr::LambdaSet(ls) => f
+                    .debug_tuple("LambdaSet")
+                    .field(&DbgLambdaSet(self.0, *ls))
+                    .finish(),
+                LayoutRepr::RecursivePointer(rp) => {
+                    f.debug_tuple("RecursivePointer").field(&rp.0).finish()
+                }
+            }
+        }
+    }
+
+    struct DbgTags<'a, 'r, I: LayoutInterner<'a>>(&'r I, &'a [&'a [InLayout<'a>]]);
+
+    impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for DbgTags<'a, 'r, I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_list()
+                .entries(self.1.iter().map(|l| DbgFields(self.0, l)))
+                .finish()
+        }
+    }
+
+    struct DbgBuiltin<'a, 'r, I: LayoutInterner<'a>>(&'r I, Builtin<'a>);
+
+    impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for DbgBuiltin<'a, 'r, I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self.1 {
+                Builtin::Int(w) => f.debug_tuple("Int").field(&w).finish(),
+                Builtin::Float(w) => f.debug_tuple("Float").field(&w).finish(),
+                Builtin::Bool => f.debug_tuple("Bool").finish(),
+                Builtin::Decimal => f.debug_tuple("Decimal").finish(),
+                Builtin::Str => f.debug_tuple("Str").finish(),
+                Builtin::List(e) => f.debug_tuple("List").field(&Dbg(self.0, e)).finish(),
+            }
+        }
+    }
+
+    struct DbgUnion<'a, 'r, I: LayoutInterner<'a>>(&'r I, UnionLayout<'a>);
+
+    impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for DbgUnion<'a, 'r, I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self.1 {
+                UnionLayout::NonRecursive(payloads) => f
+                    .debug_tuple("NonRecursive")
+                    .field(&DbgTags(self.0, payloads))
+                    .finish(),
+                UnionLayout::Recursive(payloads) => f
+                    .debug_tuple("Recursive")
+                    .field(&DbgTags(self.0, payloads))
+                    .finish(),
+                UnionLayout::NonNullableUnwrapped(fields) => f
+                    .debug_tuple("NonNullableUnwrapped")
+                    .field(&DbgFields(self.0, fields))
+                    .finish(),
+                UnionLayout::NullableWrapped {
+                    nullable_id,
+                    other_tags,
+                } => f
+                    .debug_struct("NullableWrapped")
+                    .field("nullable_id", &nullable_id)
+                    .field("other_tags", &DbgTags(self.0, other_tags))
+                    .finish(),
+                UnionLayout::NullableUnwrapped {
+                    nullable_id,
+                    other_fields,
+                } => f
+                    .debug_struct("NullableUnwrapped")
+                    .field("nullable_id", &nullable_id)
+                    .field("other_tags", &DbgFields(self.0, other_fields))
+                    .finish(),
+            }
+        }
+    }
+
+    struct DbgLambdaSet<'a, 'r, I: LayoutInterner<'a>>(&'r I, LambdaSet<'a>);
+
+    impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for DbgLambdaSet<'a, 'r, I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let LambdaSet {
+                args,
+                ret,
+                set,
+                representation,
+                full_layout,
+            } = self.1;
+
+            f.debug_struct("LambdaSet")
+                .field("args", &DbgFields(self.0, args))
+                .field("ret", &Dbg(self.0, ret))
+                .field("set", &DbgCapturesSet(self.0, set))
+                .field("representation", &Dbg(self.0, representation))
+                .field("full_layout", &full_layout)
+                .finish()
+        }
+    }
+
+    struct DbgCapturesSet<'a, 'r, I: LayoutInterner<'a>>(&'r I, &'a [(Symbol, &'a [InLayout<'a>])]);
+
+    impl<'a, 'r, I: LayoutInterner<'a>> std::fmt::Debug for DbgCapturesSet<'a, 'r, I> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_list()
+                .entries(
+                    self.1
+                        .iter()
+                        .map(|(sym, captures)| (sym.as_u64(), DbgFields(self.0, captures))),
+                )
+                .finish()
+        }
+    }
+}
+
 #[cfg(test)]
 mod insert_lambda_set {
     use bumpalo::Bump;
@@ -1544,7 +1773,7 @@ mod insert_lambda_set {
         let lambda_set =
             interner.insert_lambda_set(arena, TEST_ARGS, TEST_RET, TEST_SET, FIXUP, Layout::UNIT);
         let lambda_set_layout_in = interner.insert(Layout {
-            repr: LayoutRepr::LambdaSet(lambda_set),
+            repr: LayoutRepr::LambdaSet(lambda_set).direct(),
             semantic: SemanticRepr::NONE,
         });
         assert_eq!(lambda_set.full_layout, lambda_set_layout_in);
@@ -1603,15 +1832,16 @@ mod insert_recursive_layout {
 
     fn make_layout<'a>(arena: &'a Bump, interner: &mut impl LayoutInterner<'a>) -> Layout<'a> {
         let list_rec = Layout {
-            repr: LayoutRepr::Builtin(Builtin::List(Layout::NAKED_RECURSIVE_PTR)),
+            repr: LayoutRepr::Builtin(Builtin::List(Layout::NAKED_RECURSIVE_PTR)).direct(),
             semantic: SemanticRepr::NONE,
         };
         let repr = LayoutRepr::Union(UnionLayout::Recursive(&*arena.alloc([
             &*arena.alloc([interner.insert(list_rec)]),
-            &*arena.alloc_slice_fill_iter([interner.insert_no_semantic(LayoutRepr::struct_(
-                &*arena.alloc([Layout::NAKED_RECURSIVE_PTR]),
-            ))]),
-        ])));
+            &*arena.alloc_slice_fill_iter([interner.insert_direct_no_semantic(
+                LayoutRepr::struct_(&*arena.alloc([Layout::NAKED_RECURSIVE_PTR])),
+            )]),
+        ])))
+        .direct();
         Layout {
             repr,
             semantic: SemanticRepr::NONE,
@@ -1619,11 +1849,11 @@ mod insert_recursive_layout {
     }
 
     fn get_rec_ptr_index<'a>(interner: &impl LayoutInterner<'a>, layout: InLayout<'a>) -> usize {
-        match interner.chase_recursive(layout).repr {
+        match interner.chase_recursive(layout) {
             LayoutRepr::Union(UnionLayout::Recursive(&[&[l1], &[l2]])) => {
-                match (interner.get(l1).repr, interner.get(l2).repr) {
+                match (interner.get_repr(l1), interner.get_repr(l2)) {
                     (LayoutRepr::Builtin(Builtin::List(l1)), LayoutRepr::Struct(&[l2])) => {
-                        match (interner.get(l1).repr, interner.get(l2).repr) {
+                        match (interner.get_repr(l1), interner.get_repr(l2)) {
                             (
                                 LayoutRepr::RecursivePointer(i1),
                                 LayoutRepr::RecursivePointer(i2),

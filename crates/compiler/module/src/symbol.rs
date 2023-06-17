@@ -1262,6 +1262,8 @@ define_builtins! {
         156 NUM_IS_NAN: "isNaN"
         157 NUM_IS_INFINITE: "isInfinite"
         158 NUM_IS_FINITE: "isFinite"
+        159 NUM_MIN: "min"
+        160 NUM_MAX: "max"
     }
     4 BOOL: "Bool" => {
         0 BOOL_BOOL: "Bool" exposed_type=true // the Bool.Bool type alias
@@ -1574,8 +1576,8 @@ define_builtins! {
         20 HASH_HASH_LIST: "hashList"
         21 HASH_HASH_UNORDERED: "hashUnordered"
     }
-    14 JSON: "Json" => {
-        0 JSON_JSON: "Json"
+    14 JSON: "TotallyNotJson" => {
+        0 JSON_JSON: "TotallyNotJson"
     }
 
     num_modules: 15 // Keep this count up to date by hand! (TODO: see the mut_map! macro for how we could determine this count correctly in the macro)

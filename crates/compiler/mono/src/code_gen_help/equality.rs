@@ -24,7 +24,7 @@ pub fn eq_generic<'a>(
 ) -> Stmt<'a> {
     use crate::layout::Builtin::*;
     use LayoutRepr::*;
-    let main_body = match layout_interner.get(layout).repr {
+    let main_body = match layout_interner.get_repr(layout) {
         Builtin(Int(_) | Float(_) | Bool | Decimal) => {
             unreachable!(
                 "No generated proc for `==`. Use direct code gen for {:?}",
@@ -180,7 +180,7 @@ fn eq_struct<'a>(
         ))
     }
 
-    if_pointers_equal_return_true(root, ident_ids, [ARG_1, ARG_2], root.arena.alloc(else_stmt))
+    else_stmt
 }
 
 fn eq_tag_union<'a>(
@@ -428,13 +428,19 @@ fn eq_tag_union_help<'a>(
         )),
     ));
 
-    let compare_ptr_or_value =
-        if_pointers_equal_return_true(root, ident_ids, operands, root.arena.alloc(compare_values));
-
     if is_non_recursive {
-        compare_ptr_or_value
+        compare_values
     } else {
-        let union_layout = layout_interner.insert_no_semantic(LayoutRepr::Union(union_layout));
+        let compare_ptr_or_value = if_pointers_equal_return_true(
+            root,
+            ident_ids,
+            operands,
+            root.arena.alloc(compare_values),
+        );
+
+        let union_layout =
+            layout_interner.insert_direct_no_semantic(LayoutRepr::Union(union_layout));
+
         let loop_params_iter = operands.iter().map(|arg| Param {
             symbol: *arg,
             ownership: Ownership::Borrowed,
@@ -468,7 +474,7 @@ fn eq_tag_fields<'a>(
     // (If there are more than one, the others will use non-tail recursion)
     let rec_ptr_index = field_layouts.iter().position(|field| {
         matches!(
-            layout_interner.get(*field).repr,
+            layout_interner.get_repr(*field),
             LayoutRepr::RecursivePointer(_)
         )
     });
@@ -657,7 +663,7 @@ fn eq_list<'a>(
     let arena = root.arena;
 
     // A "Box" layout (heap pointer to a single list element)
-    let box_layout = layout_interner.insert_no_semantic(LayoutRepr::Boxed(elem_layout));
+    let box_layout = layout_interner.insert_direct_no_semantic(LayoutRepr::Boxed(elem_layout));
 
     // Compare lengths
 
@@ -703,7 +709,7 @@ fn eq_list<'a>(
     let size = root.create_symbol(ident_ids, "size");
     let size_expr = Expr::Literal(Literal::Int(
         (layout_interner
-            .get(elem_layout)
+            .get_repr(elem_layout)
             .stack_size(layout_interner, root.target_info) as i128)
             .to_ne_bytes(),
     ));

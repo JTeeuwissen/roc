@@ -202,8 +202,8 @@ fn build_benchmarks(
                             "--optimize",
                             benchmarks_path.join(benchmark.roc_path).to_str().unwrap(),
                         ])
-                        .stderr(Stdio::piped())
-                        .stdout(Stdio::piped())
+                        .stderr(Stdio::inherit())
+                        .stdout(Stdio::inherit())
                         .output()
                         .expect("failed to execute process");
                     let stdout = std::str::from_utf8(&output.stdout).expect("invalid utf8");

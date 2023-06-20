@@ -33,6 +33,9 @@ interface Num
         Decimal,
         Binary32,
         Binary64,
+        e,
+        pi,
+        tau,
         abs,
         absDiff,
         neg,
@@ -83,6 +86,7 @@ interface Num
         bitwiseAnd,
         bitwiseXor,
         bitwiseOr,
+        bitwiseNot,
         shiftLeftBy,
         shiftRightBy,
         shiftRightZfBy,
@@ -493,6 +497,18 @@ F32 : Num (FloatingPoint Binary32)
 ## subtraction, but 10-20 times longer to perform multiplication and division.
 ## [sqrt] and trigonometry are massively slower with [Dec] than with [F64].
 Dec : Num (FloatingPoint Decimal)
+
+## Euler's number (e)
+e : Frac *
+e = 2.71828182845904523536028747135266249775724709369995
+
+## Archimedes' constant (π)
+pi : Frac *
+pi = 3.14159265358979323846264338327950288419716939937510
+
+## Circle constant (τ)
+tau : Frac *
+tau = 2 * pi
 
 # ------- Functions
 ## Convert a number to a [Str].
@@ -960,9 +976,24 @@ remChecked = \a, b ->
 
 isMultipleOf : Int a, Int a -> Bool
 
+## Does a "bitwise and". Each bit of the output is 1 if the corresponding bit
+## of x AND of y is 1, otherwise it's 0.
 bitwiseAnd : Int a, Int a -> Int a
+
+## Does a "bitwise exclusive or". Each bit of the output is the same as the
+## corresponding bit in x if that bit in y is 0, and it's the complement of
+## the bit in x if that bit in y is 1.
 bitwiseXor : Int a, Int a -> Int a
+
+## Does a "bitwise or". Each bit of the output is 0 if the corresponding bit
+## of x OR of y is 0, otherwise it's 1.
 bitwiseOr : Int a, Int a -> Int a
+
+## Returns the complement of x - the number you get by switching each 1 for a
+## 0 and each 0 for a 1. This is the same as -x - 1.
+bitwiseNot : Int a -> Int a
+bitwiseNot = \n ->
+    bitwiseXor n (subWrap 0 1)
 
 ## Bitwise left shift of a number by another
 ##

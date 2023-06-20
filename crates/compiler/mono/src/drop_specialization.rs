@@ -1362,8 +1362,21 @@ where
                 arena.alloc(Stmt::Switch {
                     cond_symbol: unique_symbol,
                     cond_layout: Layout::BOOL,
-                    branches: &*arena.alloc([(1, BranchInfo::None, u.clone())]),
-                    default_branch: (BranchInfo::None, n),
+                    branches: &*arena.alloc([(
+                        1,
+                        BranchInfo::Unique {
+                            scrutinee: symbol,
+                            unique: true,
+                        },
+                        u.clone(),
+                    )]),
+                    default_branch: (
+                        BranchInfo::Unique {
+                            scrutinee: symbol,
+                            unique: false,
+                        },
+                        n,
+                    ),
                     ret_layout: environment.layout,
                 })
             };
@@ -1590,8 +1603,8 @@ fn low_level_no_rc(lowlevel: &LowLevel) -> RC {
         StrAppendScalar => RC::Rc,
         StrGetScalarUnsafe => RC::NoRc,
         StrTrim => RC::Rc,
-        StrTrimLeft => RC::Rc,
-        StrTrimRight => RC::Rc,
+        StrTrimStart => RC::Rc,
+        StrTrimEnd => RC::Rc,
         StrSplit => RC::NoRc,
         StrToNum => RC::NoRc,
         ListPrepend => RC::Rc,

@@ -1264,6 +1264,10 @@ define_builtins! {
         158 NUM_IS_FINITE: "isFinite"
         159 NUM_MIN: "min"
         160 NUM_MAX: "max"
+        161 NUM_E: "e"
+        162 NUM_PI: "pi"
+        163 NUM_TAU: "tau"
+        164 NUM_BITWISE_NOT: "bitwiseNot"
     }
     4 BOOL: "Bool" => {
         0 BOOL_BOOL: "Bool" exposed_type=true // the Bool.Bool type alias
@@ -1299,8 +1303,8 @@ define_builtins! {
         15 STR_FROM_UTF8_RANGE: "fromUtf8Range"
         16 STR_REPEAT: "repeat"
         17 STR_TRIM: "trim"
-        18 STR_TRIM_LEFT: "trimLeft"
-        19 STR_TRIM_RIGHT: "trimRight"
+        18 STR_TRIM_START: "trimStart"
+        19 STR_TRIM_END: "trimEnd"
         20 STR_TO_DEC: "toDec"
         21 STR_TO_F64: "toF64"
         22 STR_TO_F32: "toF32"

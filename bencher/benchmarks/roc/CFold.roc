@@ -122,7 +122,7 @@ constFolding = \e ->
                     Mul (Val (a * b)) x
 
                 Pair y1 y2 ->
-                    Add y1 y2
+                    Mul y1 y2
 
         _ ->
             e

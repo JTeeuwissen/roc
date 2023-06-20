@@ -3154,7 +3154,6 @@ fn update<'a>(
                             module_id,
                             ident_ids,
                             &mut update_mode_ids,
-                            state.target_info,
                             &mut state.procedures,
                         );
 

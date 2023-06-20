@@ -24,7 +24,6 @@ use bumpalo::collections::Vec;
 use bumpalo::Bump;
 use roc_collections::all::MutSet;
 use roc_module::symbol::{IdentIds, ModuleId, Symbol};
-use roc_target::TargetInfo;
 
 pub fn insert_reset_reuse<'a, 'i>(
     arena: &'a Bump,
@@ -32,14 +31,12 @@ pub fn insert_reset_reuse<'a, 'i>(
     home: ModuleId,
     ident_ids: &'i mut IdentIds,
     update_mode_ids: &'i mut UpdateModeIds,
-    target_info: TargetInfo,
     mut proc: Proc<'a>,
 ) -> Proc<'a> {
     let mut env = Env {
         arena,
         interner,
         home,
-        target_info,
         ident_ids,
         update_mode_ids,
         jp_live_vars: Default::default(),
@@ -66,7 +63,6 @@ enum Foo {
 
 fn may_reuse(
     layout_interner: &STLayoutInterner,
-    target_info: TargetInfo,
     tag_layout: UnionLayout,
     tag_id: TagIdIntType,
     in_layout: InLayout,
@@ -76,7 +72,7 @@ fn may_reuse(
         return Foo::None;
     }
 
-    let (size, alignment) = tag_layout.data_size_and_alignment(layout_interner, target_info);
+    let (size, alignment) = tag_layout.data_size_and_alignment(layout_interner);
     let has_tag = match tag_layout {
         UnionLayout::NonRecursive(_) => return Foo::None,
         // The memory for union layouts that has a tag_id can be reused for new allocations with tag_id.
@@ -85,9 +81,7 @@ fn may_reuse(
         UnionLayout::NonNullableUnwrapped(_) | UnionLayout::NullableUnwrapped { .. } => false,
     };
 
-    let (other_size, other_alignment) = other
-        .layout
-        .data_size_and_alignment(layout_interner, target_info);
+    let (other_size, other_alignment) = other.layout.data_size_and_alignment(layout_interner);
     let other_has_tag = match other.layout {
         UnionLayout::NonRecursive(_) => return Foo::None,
         // The memory for union layouts that has a tag_id can be reused for new allocations with tag_id.
@@ -111,7 +105,6 @@ fn may_reuse(
 struct Env<'a, 'i> {
     arena: &'a Bump,
     interner: &'i mut STLayoutInterner<'a>,
-    target_info: TargetInfo,
 
     /// required for creating new `Symbol`s
     home: ModuleId,
@@ -146,14 +139,7 @@ fn function_s<'a, 'i>(
                 tag_id,
                 arguments,
             } => {
-                match may_reuse(
-                    env.interner,
-                    env.target_info,
-                    *tag_layout,
-                    *tag_id,
-                    *layout,
-                    c,
-                ) {
+                match may_reuse(env.interner, *tag_layout, *tag_id, *layout, c) {
                     Foo::Cast => {
                         let new_symbol = env.unique_symbol();
 
@@ -709,7 +695,7 @@ fn function_r_branch_body<'a, 'i>(
     let temp = function_r(env, body);
 
     match info {
-        BranchInfo::None | BranchInfo::List { .. } => temp,
+        BranchInfo::None | BranchInfo::Unique { .. } | BranchInfo::List { .. } => temp,
         BranchInfo::Constructor {
             scrutinee,
             layout,

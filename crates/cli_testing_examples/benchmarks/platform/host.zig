@@ -39,6 +39,11 @@ extern fn memset(dst: [*]u8, value: i32, size: usize) callconv(.C) void;
 
 const DEBUG: bool = false;
 
+var ALLOC: u64 = 0;
+var DEALLOC: u64 = 0;
+extern var INC: u64;
+extern var DEC: u64;
+
 export fn roc_alloc(size: usize, alignment: u32) callconv(.C) ?*anyopaque {
     if (DEBUG) {
         var ptr = malloc(size);
@@ -46,6 +51,7 @@ export fn roc_alloc(size: usize, alignment: u32) callconv(.C) ?*anyopaque {
         stdout.print("alloc:   {d} (alignment {d}, size {d})\n", .{ ptr, alignment, size }) catch unreachable;
         return ptr;
     } else {
+        ALLOC += 1;
         return malloc(size);
     }
 }
@@ -65,6 +71,7 @@ export fn roc_dealloc(c_ptr: *anyopaque, alignment: u32) callconv(.C) void {
         stdout.print("dealloc: {d} (alignment {d})\n", .{ c_ptr, alignment }) catch unreachable;
     }
 
+    DEALLOC += 1;
     free(@alignCast(Align, @ptrCast([*]u8, c_ptr)));
 }
 
@@ -139,6 +146,10 @@ pub fn main() !u8 {
     const seconds = (@intToFloat(f64, nanos) / 1_000_000_000.0);
 
     stderr.print("runtime: {d:.3}ms\n", .{seconds * 1000}) catch unreachable;
+    stderr.print("alloc: {}\n", .{ALLOC}) catch unreachable;
+    stderr.print("free: {}\n", .{DEALLOC}) catch unreachable;
+    stderr.print("inc: {}\n", .{INC}) catch unreachable;
+    stderr.print("dec: {}\n", .{DEC}) catch unreachable;
 
     return 0;
 }

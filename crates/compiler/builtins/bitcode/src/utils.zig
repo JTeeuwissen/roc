@@ -4,6 +4,8 @@ const always_inline = std.builtin.CallOptions.Modifier.always_inline;
 const Monotonic = std.builtin.AtomicOrder.Monotonic;
 
 const DEBUG_INCDEC = false;
+export var INC: u64 = 0;
+export var DEC: u64 = 0;
 
 pub fn WithOverflow(comptime T: type) type {
     return extern struct { value: T, has_overflowed: bool };
@@ -137,6 +139,7 @@ const RC_TYPE = Refcount.normal;
 pub fn increfRcPtrC(ptr_to_refcount: *isize, amount: isize) callconv(.C) void {
     if (RC_TYPE == Refcount.none) return;
 
+    INC += 1;
     if (DEBUG_INCDEC and builtin.target.cpu.arch != .wasm32) {
         std.debug.print("| increment {*}: ", .{ptr_to_refcount});
     }
@@ -243,6 +246,7 @@ inline fn decref_ptr_to_refcount(
     if (RC_TYPE == Refcount.none) return;
     const extra_bytes = std.math.max(alignment, @sizeOf(usize));
 
+    DEC += 1;
     if (DEBUG_INCDEC and builtin.target.cpu.arch != .wasm32) {
         std.debug.print("| decrement {*}: ", .{refcount_ptr});
     }

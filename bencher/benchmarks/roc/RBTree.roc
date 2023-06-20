@@ -1,6 +1,6 @@
 app "rbtree"
-    packages { pf: "https://github.com/roc-lang/basic-cli/releases/download/0.3.2/tE4xS_zLdmmxmHwHih9kHWQ7fsXtJr7W7h3425-eZFk.tar.br" }
-    imports [pf.Stdout, pf.Task.{ Task }]
+    packages { pf: "../../../crates/cli_testing_examples/benchmarks/platform/main.roc" }
+    imports [pf.Task]
     provides [main] to pf
 
 main : Task.Task {} []
@@ -10,7 +10,7 @@ main =
 
     val
     |> Num.toStr
-    |> Stdout.line
+    |> Task.putLine
 
 Color : [Red, Black]
 

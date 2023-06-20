@@ -1,6 +1,6 @@
 app "deriv"
-    packages { pf: "https://github.com/roc-lang/basic-cli/releases/download/0.3.2/tE4xS_zLdmmxmHwHih9kHWQ7fsXtJr7W7h3425-eZFk.tar.br" }
-    imports [pf.Stdout, pf.Task.{ Task }]
+    packages { pf: "../../../crates/cli_testing_examples/benchmarks/platform/main.roc" }
+    imports [pf.Task]
     provides [main] to pf
 
 # based on: https://github.com/koka-lang/koka/blob/master/test/bench/haskell/deriv.hs
@@ -9,14 +9,14 @@ IO a : Task.Task a []
 main : Task.Task {} []
 main =
     x : Expr
-    x = Var "x" # Check box
+    x = Var "x"
 
     f : Expr
     f = pow x x
 
-    _ <- Task.await (nest deriv 10 f)
+    _ <- Task.after (nest deriv 10 f)
 
-    Stdout.line "done"
+    Task.putLine "done"
 
 
 nest : (I32, Expr -> IO Expr), I32, Expr -> IO Expr
@@ -29,7 +29,7 @@ nestHelp = \{ s, f, m, x } ->
     when m is
         0 -> Task.succeed (Done x)
         _ ->
-            w <- Task.await (f (s - m) x)
+            w <- Task.after (f (s - m) x)
 
             Task.succeed (Step { s, f, m: (m - 1), x: w })
 
@@ -162,5 +162,5 @@ deriv = \i, f ->
         |> Str.concat " count: "
         |> Str.concat (Num.toStr (count fprime))
 
-    _ <- Task.await (Stdout.line line)
+    _ <- Task.after (Task.putLine line)
     Task.succeed fprime

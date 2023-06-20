@@ -10,10 +10,12 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     match args.as_slice() {
         [_] => {
-            build_performance::inserts(
+            build_performance::static_performance(
                 current_dir.join("benchmarks/").as_path(),
                 current_dir.parent().unwrap(),
                 current_dir.join("results/ir/").as_path(),
+                current_dir.join("results/static.csv").as_path(),
+                current_dir.join("results/dynamic.csv").as_path(),
             );
         }
         [_, iterations] => {

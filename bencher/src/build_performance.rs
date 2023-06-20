@@ -1,25 +1,33 @@
 use std::{
     fs::File,
     io::Write,
+    iter,
     path::Path,
     process::{Command, Stdio},
     vec::Vec,
 };
 
+use csv::Writer;
 use regex::Regex;
 
 use crate::roc_configuration::RocConfiguration;
 
-pub(crate) fn inserts(benchmarks_path: &Path, roc_path: &Path, output_path: &Path) {
+pub(crate) fn static_performance(
+    benchmarks_path: &Path,
+    roc_path: &Path,
+    output_path: &Path,
+    static_csv_path: &Path,
+    dynamic_csv_path: &Path,
+) {
     let static_inc_regex = Regex::new(r"inc `.*`;").unwrap();
     let static_dec_regex = Regex::new(r"dec `.*`;").unwrap();
     let static_reset_regex = Regex::new(r"Reset \{.*\};").unwrap();
     let static_reuse_regex = Regex::new(r"Reuse `.*`;").unwrap();
 
-    let dynamic_inc_regex = Regex::new(r"\| increment").unwrap();
-    let dynamic_dec_regex = Regex::new(r"\| decrement").unwrap();
-    let dynamic_alloc_regex = Regex::new(r"alloc:").unwrap();
-    let dynamic_dealloc_regex = Regex::new(r"free:").unwrap();
+    let dynamic_inc_regex = Regex::new(r"inc: (\d*)").unwrap();
+    let dynamic_dec_regex = Regex::new(r"dec: (\d*)").unwrap();
+    let dynamic_alloc_regex = Regex::new(r"alloc: (\d*)").unwrap();
+    let dynamic_dealloc_regex = Regex::new(r"free: (\d*)").unwrap();
 
     let mut results = [[Result::default(); BENCHMARKS.len()]; CONFIGURATIONS.len()];
 
@@ -37,14 +45,13 @@ pub(crate) fn inserts(benchmarks_path: &Path, roc_path: &Path, output_path: &Pat
                     "--debug",
                     "--linker=legacy",
                     benchmarks_path.join(benchmark.path).to_str().unwrap(),
-                ]) // todo update
+                ])
                 .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
+                .stdout(Stdio::inherit())
                 .stderr(Stdio::piped())
                 .output()
                 .expect("failed to execute process");
 
-            let stdout = String::from_utf8(output.stdout).expect("invalid utf8");
             let stderr = String::from_utf8(output.stderr).expect("invalid utf8");
 
             File::create(Path::new(output_path).join(format!(
@@ -61,10 +68,38 @@ pub(crate) fn inserts(benchmarks_path: &Path, roc_path: &Path, output_path: &Pat
             let static_resets = static_reset_regex.find_iter(&stderr).count();
             let static_reuses = static_reuse_regex.find_iter(&stderr).count();
 
-            let dynamic_incs = dynamic_inc_regex.find_iter(&stderr).count();
-            let dynamic_decs = dynamic_dec_regex.find_iter(&stderr).count();
-            let dynamic_allocs = dynamic_alloc_regex.find_iter(&stdout).count();
-            let dynamic_deallocs = dynamic_dealloc_regex.find_iter(&stdout).count();
+            let dynamic_incs = dynamic_inc_regex
+                .captures(&stderr)
+                .unwrap()
+                .get(1)
+                .unwrap()
+                .as_str()
+                .parse::<u64>()
+                .unwrap();
+            let dynamic_decs = dynamic_dec_regex
+                .captures(&stderr)
+                .unwrap()
+                .get(1)
+                .unwrap()
+                .as_str()
+                .parse::<u64>()
+                .unwrap();
+            let dynamic_allocs = dynamic_alloc_regex
+                .captures(&stderr)
+                .unwrap()
+                .get(1)
+                .unwrap()
+                .as_str()
+                .parse::<u64>()
+                .unwrap();
+            let dynamic_deallocs = dynamic_dealloc_regex
+                .captures(&stderr)
+                .unwrap()
+                .get(1)
+                .unwrap()
+                .as_str()
+                .parse::<u64>()
+                .unwrap();
 
             results[ci][bi] = Result {
                 static_incs,
@@ -84,68 +119,73 @@ pub(crate) fn inserts(benchmarks_path: &Path, roc_path: &Path, output_path: &Pat
         }
     }
 
-    println!("Results:");
-    println!(
-        "Static\t{}",
-        BENCHMARKS
-            .iter()
-            .map(|b| { format!("{}\t\t\t\t", b.name) })
-            .collect::<Vec<String>>()
-            .join("")
-    );
-    println!(
-        "\t{}",
-        BENCHMARKS
-            .iter()
-            .map(|_| { "inc\tdec\treset\treuse\t" })
-            .collect::<Vec<_>>()
-            .join("")
-    );
-    for (ci, configuration) in CONFIGURATIONS.iter().enumerate() {
-        print!("{}\t", configuration.name);
-        for (bi, _) in BENCHMARKS.iter().enumerate() {
-            let result = &results[ci][bi];
+    let mut wtr = Writer::from_path(static_csv_path).unwrap();
+    wtr.write_record(
+        iter::once("Static").chain(BENCHMARKS.iter().flat_map(|b| [b.name, "", "", ""])),
+    )
+    .unwrap();
 
-            print!(
-                "{}\t{}\t{}\t{}\t",
-                result.static_incs, result.static_decs, result.static_resets, result.static_reuses
-            );
-        }
-        println!();
+    wtr.write_record(
+        iter::once("").chain(
+            BENCHMARKS
+                .iter()
+                .flat_map(|_| ["inc", "dec", "reset", "reuse"]),
+        ),
+    )
+    .unwrap();
+
+    for (ci, configuration) in CONFIGURATIONS.iter().enumerate() {
+        let iter = BENCHMARKS
+            .iter()
+            .enumerate()
+            .flat_map(|(bi, _)| {
+                let result = &results[ci][bi];
+                [
+                    result.static_incs.to_string(),
+                    result.static_decs.to_string(),
+                    result.static_resets.to_string(),
+                    result.static_reuses.to_string(),
+                ]
+            })
+            .collect::<Vec<_>>();
+        wtr.write_record(iter::once(configuration.name).chain(iter.iter().map(|v| v.as_str())))
+            .unwrap();
     }
 
-    println!();
-    println!(
-        "Dynamic\t{}",
-        BENCHMARKS
-            .iter()
-            .map(|b| { format!("{}\t\t\t\t", b.name) })
-            .collect::<Vec<String>>()
-            .join("")
-    );
-    println!(
-        "\t{}",
-        BENCHMARKS
-            .iter()
-            .map(|_| { "inc\tdec\talloc\tdealloc\t" })
-            .collect::<Vec<_>>()
-            .join("")
-    );
-    for (ci, configuration) in CONFIGURATIONS.iter().enumerate() {
-        print!("{}\t", configuration.name);
-        for (bi, _) in BENCHMARKS.iter().enumerate() {
-            let result = &results[ci][bi];
+    wtr.flush().unwrap();
 
-            print!(
-                "{}\t{}\t{}\t{}\t",
-                result.dynamic_incs,
-                result.dynamic_decs,
-                result.dynamic_allocs,
-                result.dynamic_deallocs
-            );
-        }
-        println!();
+    let mut wtr = Writer::from_path(dynamic_csv_path).unwrap();
+    wtr.write_record(
+        iter::once("Dynamic").chain(BENCHMARKS.iter().flat_map(|b| [b.name, "", "", ""])),
+    )
+    .unwrap();
+
+    wtr.write_record(
+        iter::once("").chain(
+            BENCHMARKS
+                .iter()
+                .flat_map(|_| ["inc", "dec", "alloc", "dealloc"]),
+        ),
+    )
+    .unwrap();
+    for (ci, configuration) in CONFIGURATIONS.iter().enumerate() {
+        let iter = BENCHMARKS
+            .iter()
+            .enumerate()
+            .flat_map(|(bi, _)| {
+                let result = &results[ci][bi];
+                [
+                    result.dynamic_incs.to_string(),
+                    result.dynamic_decs.to_string(),
+                    result.dynamic_allocs.to_string(),
+                    result.dynamic_deallocs.to_string(),
+                ]
+            })
+            .collect::<Vec<_>>();
+        wtr.write_record(iter::once(configuration.name).chain(iter.iter().map(|v| v.as_str())))
+            .unwrap();
     }
+    wtr.flush().unwrap();
 }
 
 const CONFIGURATIONS: [Configuration; 4] = [
@@ -206,8 +246,8 @@ struct Result {
     static_decs: usize,
     static_resets: usize,
     static_reuses: usize,
-    dynamic_incs: usize,
-    dynamic_decs: usize,
-    dynamic_allocs: usize,
-    dynamic_deallocs: usize,
+    dynamic_incs: u64,
+    dynamic_decs: u64,
+    dynamic_allocs: u64,
+    dynamic_deallocs: u64,
 }

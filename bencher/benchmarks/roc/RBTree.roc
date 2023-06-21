@@ -5,7 +5,8 @@ app "rbtree"
 
 main : Task.Task {} []
 main =
-    t = makeTree 4200000
+    # t = makeTree 4200000 # Benchmarks
+    t = makeTree 100 # Dynamic Analysis
     val = fold (\_, v, r -> if v then r + 1 else r) t 0
 
     val

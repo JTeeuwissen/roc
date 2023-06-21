@@ -20,8 +20,8 @@ pub(crate) fn static_performance(
     dynamic_csv_path: &Path,
 ) {
     let static_inc_regex = Regex::new(r"inc `.*`;").unwrap();
-    let static_dec_regex = Regex::new(r"dec `.*`;").unwrap();
-    let static_reset_regex = Regex::new(r"Reset \{.*\};").unwrap();
+    let static_dec_regex = Regex::new(r"dec(ref)? `.*`;").unwrap();
+    let static_reset_regex = Regex::new(r"Reset(Ref)? \{.*\};").unwrap();
     let static_reuse_regex = Regex::new(r"Reuse `.*`;").unwrap();
 
     let dynamic_inc_regex = Regex::new(r"inc: (\d*)").unwrap();
@@ -42,6 +42,8 @@ pub(crate) fn static_performance(
                 .args([
                     "run",
                     "--",
+                    "run",
+                    "--optimize",
                     "--debug",
                     "--linker=legacy",
                     benchmarks_path.join(benchmark.path).to_str().unwrap(),
@@ -129,7 +131,7 @@ pub(crate) fn static_performance(
         iter::once("").chain(
             BENCHMARKS
                 .iter()
-                .flat_map(|_| ["inc", "dec", "reset", "reuse"]),
+                .flat_map(|_| ["dup", "drop", "reset", "reuse"]),
         ),
     )
     .unwrap();
@@ -164,7 +166,7 @@ pub(crate) fn static_performance(
         iter::once("").chain(
             BENCHMARKS
                 .iter()
-                .flat_map(|_| ["inc", "dec", "alloc", "dealloc"]),
+                .flat_map(|_| ["dup", "drop", "alloc", "dealloc"]),
         ),
     )
     .unwrap();

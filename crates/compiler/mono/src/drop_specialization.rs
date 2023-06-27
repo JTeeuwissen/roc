@@ -223,13 +223,26 @@ fn specialize_drops_stmt<'a, 'i>(
                 Expr::Reuse { .. } => {
                     alloc_let_with_continuation!(environment)
                 }
-                Expr::Reset { .. } | Expr::ResetRef { .. } => {
-                    let incremented_symbols = environment.incremented_symbols.drain();
+                Expr::Reset { symbol, .. } | Expr::ResetRef { symbol, .. } => {
+                    let incremented_children = {
+                        let mut todo_children = bumpalo::vec![in arena; *symbol];
+                        let mut incremented_children = CountingMap::new();
+
+                        while let Some(child) = todo_children.pop() {
+                            if environment.incremented_symbols.pop(&child) {
+                                incremented_children.insert(child);
+                            } else {
+                                todo_children.extend(environment.get_children(&child));
+                            }
+                        }
+
+                        incremented_children
+                    };
 
                     let new_stmt = alloc_let_with_continuation!(environment);
 
                     // The new_environment might have inserted increments that were set to 0 before. We need to add th
-                    for (symbol, increment) in incremented_symbols.map.into_iter() {
+                    for (symbol, increment) in incremented_children.map.into_iter() {
                         environment
                             .incremented_symbols
                             .insert_count(symbol, increment);

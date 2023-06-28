@@ -1521,16 +1521,19 @@ pub fn build_reset<'a, 'ctx>(
     env: &Env<'a, 'ctx, '_>,
     layout_interner: &STLayoutInterner<'a>,
     layout_ids: &mut LayoutIds<'a>,
-    union_layout: UnionLayout<'a>,
+    layout: InLayout<'a>,
 ) -> FunctionValue<'ctx> {
     let mode = Mode::Dec;
 
-    let union_layout_repr = LayoutRepr::Union(union_layout);
-    let layout_id = layout_ids.get(Symbol::DEC, &union_layout_repr);
+    let layout_repr = layout_interner.get_repr(layout);
+
+    let layout_id = layout_ids.get(Symbol::DEC, &layout_repr);
     let fn_name = layout_id.to_symbol_string(Symbol::DEC, &env.interns);
     let fn_name = format!("{}_reset", fn_name);
 
-    let dec_function = build_rec_union(env, layout_interner, layout_ids, Mode::Dec, union_layout);
+    let dec_function =
+        modify_refcount_layout_build_function(env, layout_interner, layout_ids, Mode::Dec, layout)
+            .unwrap();
 
     let function = match env.module.get_function(fn_name.as_str()) {
         Some(function_value) => function_value,
@@ -1538,7 +1541,7 @@ pub fn build_reset<'a, 'ctx>(
             let block = env.builder.get_insert_block().expect("to be in a function");
             let di_location = env.builder.get_current_debug_location().unwrap();
 
-            let basic_type = basic_type_from_layout(env, layout_interner, union_layout_repr);
+            let basic_type = basic_type_from_layout(env, layout_interner, layout_repr);
             let function_value = build_header(env, basic_type, mode, &fn_name);
 
             build_reuse_rec_union_help(
@@ -1652,6 +1655,41 @@ fn build_reuse_rec_union_help<'a, 'ctx>(
             do_recurse_block,
             DecOrReuse::Reuse,
         )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_reuse_rec_box_help<'a, 'ctx>(
+    env: &Env<'a, 'ctx, '_>,
+    layout_interner: &STLayoutInterner<'a>,
+    layout_ids: &mut LayoutIds<'a>,
+    box_layout: InLayout<'a>,
+    reset_function: FunctionValue<'ctx>,
+    dec_function: FunctionValue<'ctx>,
+) {
+    let do_recurse_block = env.context.append_basic_block(parent, "do_recurse");
+    let no_recurse_block = env.context.append_basic_block(parent, "no_recurse");
+
+    builder.build_conditional_branch(refcount_ptr.is_1(env), do_recurse_block, no_recurse_block);
+
+    {
+        env.builder.position_at_end(no_recurse_block);
+
+        refcount_ptr.modify(call_mode, layout, env, layout_interner);
+        env.builder.build_return(None);
+    }
+
+    {
+        env.builder.position_at_end(do_recurse_block);
+
+        modify_refcount_box_help(
+            env,
+            layout_interner,
+            layout_ids,
+            mode,
+            inner_layout,
+            function_value,
+        );
     }
 }
 

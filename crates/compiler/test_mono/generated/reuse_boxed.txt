@@ -1,0 +1,17 @@
+procedure Box.1 (#Attr.2):
+    let Box.4 : Boxed({I64, I64}) = Box #Attr.2;
+    ret Box.4;
+
+procedure Test.0 ():
+    let Test.11 : I64 = 1i64;
+    let Test.12 : I64 = 2i64;
+    let Test.4 : {I64, I64} = Struct {Test.11, Test.12};
+    let Test.5 : Boxed({I64, I64}) = CallByName Box.1 Test.4;
+    dec Test.5;
+    let Test.9 : I64 = 3i64;
+    let Test.10 : I64 = 4i64;
+    let Test.6 : {I64, I64} = Struct {Test.9, Test.10};
+    let Test.7 : Boxed({I64, I64}) = CallByName Box.1 Test.6;
+    dec Test.7;
+    let Test.8 : Str = "done";
+    ret Test.8;

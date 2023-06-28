@@ -1,0 +1,26 @@
+procedure Box.1 (#Attr.2):
+    let Box.3 : Boxed({I64, I64}) = Box #Attr.2;
+    ret Box.3;
+
+procedure Test.0 ():
+    let Test.15 : I64 = 1i64;
+    let Test.16 : I64 = 2i64;
+    let Test.7 : {I64, I64} = Struct {Test.15, Test.16};
+    let Test.8 : Boxed({I64, I64}) = CallByName Box.1 Test.7;
+    let #Derived_gen.2 : Boxed({I64, I64}) = Reset { symbol: Test.8, id: UpdateModeId { id: 0 } };
+    let Test.13 : I64 = 3i64;
+    let Test.14 : [<rnu><null>, C I64 *self] = TagId(1) ;
+    let #Derived_gen.3 : [<rnu><null>, C I64 *self] = lowlevel PtrCast #Derived_gen.2;
+    let Test.9 : [<rnu><null>, C I64 *self] = Reuse #Derived_gen.3 UpdateModeId { id: 0 } TagId(0) Test.13 Test.14;
+    joinpoint #Derived_gen.0:
+        let Test.12 : Str = "done";
+        ret Test.12;
+    in
+    let #Derived_gen.1 : Int1 = lowlevel RefCountIsUnique Test.9;
+    if #Derived_gen.1 then
+        dec Test.14;
+        free Test.9;
+        jump #Derived_gen.0;
+    else
+        decref Test.9;
+        jump #Derived_gen.0;

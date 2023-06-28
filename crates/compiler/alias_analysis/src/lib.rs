@@ -1508,29 +1508,42 @@ fn expr_spec<'a>(
             symbol,
             update_mode,
         } => {
-            let tag_value_id = env.symbols[symbol];
+            let tag_or_tuple_id = env.symbols[symbol];
 
-            let union_layout = match interner.get_repr(layout) {
-                LayoutRepr::Union(ul) => ul,
+            match interner.get_repr(layout) {
+                LayoutRepr::Union(union_layout) => {
+                    let type_name_bytes = recursive_tag_union_name_bytes(&union_layout).as_bytes();
+                    let type_name = TypeName(&type_name_bytes);
+
+                    // unwrap the named wrapper
+                    let union_id =
+                        builder.add_unwrap_named(block, MOD_APP, type_name, tag_or_tuple_id)?;
+
+                    let heap_cell = builder.add_get_tuple_field(block, union_id, TAG_CELL_INDEX)?;
+                    let union_data =
+                        builder.add_get_tuple_field(block, union_id, TAG_DATA_INDEX)?;
+
+                    let mode = update_mode.to_bytes();
+                    let update_mode_var = UpdateModeVar(&mode);
+
+                    let _unit = builder.add_update(block, update_mode_var, heap_cell)?;
+
+                    let value = with_new_heap_cell(builder, block, union_data)?;
+                    builder.add_make_named(block, MOD_APP, type_name, value)
+                }
+                LayoutRepr::Boxed(boxed_layout) => {
+                    // use std::collections::hash_map::DefaultHasher;
+                    // use std::hash::Hash;
+                    // use std::hash::Hasher;
+
+                    // let mut hasher = DefaultHasher::new();
+                    // boxed_layout.hash(&mut hasher);
+                    // let type_name_bytes = hasher.finish().to_ne_bytes();
+                    // type_name_bytes
+                    builder.add_make_tuple(block, &[])
+                }
                 _ => unreachable!(),
-            };
-
-            let type_name_bytes = recursive_tag_union_name_bytes(&union_layout).as_bytes();
-            let type_name = TypeName(&type_name_bytes);
-
-            // unwrap the named wrapper
-            let union_id = builder.add_unwrap_named(block, MOD_APP, type_name, tag_value_id)?;
-
-            let heap_cell = builder.add_get_tuple_field(block, union_id, TAG_CELL_INDEX)?;
-            let union_data = builder.add_get_tuple_field(block, union_id, TAG_DATA_INDEX)?;
-
-            let mode = update_mode.to_bytes();
-            let update_mode_var = UpdateModeVar(&mode);
-
-            let _unit = builder.add_update(block, update_mode_var, heap_cell)?;
-
-            let value = with_new_heap_cell(builder, block, union_data)?;
-            builder.add_make_named(block, MOD_APP, type_name, value)
+            }
         }
         RuntimeErrorFunction(_) => {
             let type_id = layout_spec(env, builder, interner, interner.get_repr(layout))?;

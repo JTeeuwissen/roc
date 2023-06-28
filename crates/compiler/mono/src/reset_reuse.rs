@@ -142,11 +142,11 @@ fn insert_reset_reuse_operations_stmt<'a, 'i>(
                         // Check if the tag id for this layout can be reused at all.
                         match can_reuse_union_layout_tag(*tag_layout, Option::Some(*tag_id)) {
                             // The tag is reusable.
-                            Reuse::Reusable(union_layout) => {
+                            UnionReuse::Reusable(union_layout) => {
                                 // See if we have a token.
                                 match environment.pop_reuse_token(&get_reuse_layout_info(
                                     layout_interner,
-                                    union_layout,
+                                    &ReuseInfo::Union(union_layout),
                                 )) {
                                     // We have a reuse token for this layout, use it.
                                     Some(TokenWithInLayout {
@@ -199,9 +199,64 @@ fn insert_reset_reuse_operations_stmt<'a, 'i>(
                                 }
                             }
                             // We cannot reuse this tag id because it's a null pointer.
-                            Reuse::Nonreusable => (None, expr.clone()),
+                            UnionReuse::Nonreusable => (None, expr.clone()),
                         }
                     }
+                    // Expr::ExprBox { symbol } => {
+                    //     match environment.pop_reuse_token(&get_reuse_layout_info(
+                    //         layout_interner,
+                    //         // TODO is this the right layout?
+                    //         ReuseInfo::Box(*layout),
+                    //     )) {
+                    //         // We have a reuse token for this layout, use it.
+                    //         Some(TokenWithInLayout {
+                    //             token: reuse_token,
+                    //             inlayout: layout_info,
+                    //         }) => {
+                    //             // The reuse token layout is the same, we can use it without casting.
+                    //             if layout_info == layout {
+                    //                 (
+                    //                     None,
+                    //                     Expr::Reuse {
+                    //                         symbol: reuse_token.symbol,
+                    //                         update_mode: reuse_token.update_mode_id,
+                    //                         // for now, always overwrite the tag ID just to be sure
+                    //                         update_tag_id: true,
+                    //                         tag_layout: *tag_layout,
+                    //                         tag_id: *tag_id,
+                    //                         arguments,
+                    //                     },
+                    //                 )
+                    //             }
+                    //             // The reuse token has a different layout from the tag, we need to pointercast it before.
+                    //             else {
+                    //                 let new_symbol = Symbol::new(home, ident_ids.gen_unique());
+                    //                 (
+                    //                     Some(move |new_let| {
+                    //                         arena.alloc(Stmt::Let(
+                    //                             new_symbol,
+                    //                             create_ptr_cast(arena, reuse_token.symbol),
+                    //                             *layout,
+                    //                             new_let,
+                    //                         ))
+                    //                     }),
+                    //                     Expr::Reuse {
+                    //                         symbol: new_symbol,
+                    //                         update_mode: reuse_token.update_mode_id,
+                    //                         // for now, always overwrite the tag ID just to be sure
+                    //                         update_tag_id: true,
+                    //                         tag_layout: *tag_layout,
+                    //                         tag_id: *tag_id,
+                    //                         arguments,
+                    //                     },
+                    //                 )
+                    //             }
+                    //         }
+
+                    //         // We have no reuse token available, keep the old expression with a fresh allocation.
+                    //         None => (None, expr.clone()),
+                    //     }
+                    // }
                     _ => (None, expr.clone()),
                 };
 
@@ -450,7 +505,7 @@ fn insert_reset_reuse_operations_stmt<'a, 'i>(
                                 &symbol,
                                 layout,
                             ) {
-                                Reuse::Reusable(union_layout) => {
+                                Reuse::Reusable(reuse_info) => {
                                     let (reuse_symbol, reset_op) = match rc {
                                         ModifyRc::Dec(_) => (
                                             Symbol::new(home, ident_ids.gen_unique()),
@@ -460,18 +515,21 @@ fn insert_reset_reuse_operations_stmt<'a, 'i>(
                                             Symbol::new(home, ident_ids.gen_unique()),
                                             ResetOperation::ResetRef,
                                         ),
-                                        ModifyRc::Free(_) => {
-                                            if union_layout
-                                                .stores_tag_id_in_pointer(environment.target_info)
+                                        ModifyRc::Free(_) => match reuse_info {
+                                            // Unions that store a tag id in the pointer need their tag id to be clearer.
+                                            ReuseInfo::Union(union_layout)
+                                                if union_layout.stores_tag_id_in_pointer(
+                                                    environment.target_info,
+                                                ) =>
                                             {
                                                 (
                                                     Symbol::new(home, ident_ids.gen_unique()),
                                                     ResetOperation::ClearTagId,
                                                 )
-                                            } else {
-                                                (symbol, ResetOperation::Nothing)
                                             }
-                                        }
+                                            // Unions without pointers or boxes can be reused without any modification.
+                                            _ => (symbol, ResetOperation::Nothing),
+                                        },
                                         _ => unreachable!(),
                                     };
 
@@ -484,18 +542,12 @@ fn insert_reset_reuse_operations_stmt<'a, 'i>(
 
                                     environment.push_reuse_token(
                                         arena,
-                                        get_reuse_layout_info(layout_interner, union_layout),
+                                        get_reuse_layout_info(layout_interner, &reuse_info),
                                         reuse_token,
                                         layout,
                                     );
 
-                                    Some((
-                                        owned_layout,
-                                        union_layout,
-                                        symbol,
-                                        reuse_token,
-                                        reset_op,
-                                    ))
+                                    Some((owned_layout, reuse_info, symbol, reuse_token, reset_op))
                                 }
                                 Reuse::Nonreusable => None,
                             }
@@ -520,16 +572,16 @@ fn insert_reset_reuse_operations_stmt<'a, 'i>(
             );
 
             // If we inserted a reuse token, we need to insert a reset reuse operation if the reuse token is consumed.
-            if let Some((layout, union_layout, symbol, reuse_token, reset_op)) = reuse_pair {
+            if let Some((layout, reuse_info, symbol, reuse_token, reset_op)) = reuse_pair {
                 let stack_reuse_token = environment
-                    .peek_reuse_token(&get_reuse_layout_info(layout_interner, union_layout));
+                    .peek_reuse_token(&get_reuse_layout_info(layout_interner, &reuse_info));
 
                 match stack_reuse_token {
                     Some(token_with_layout) if token_with_layout.token == reuse_token => {
                         // The token we inserted is still on the stack, so we don't need to insert a reset operation.
                         // We do need to remove the token from the environment. To prevent errors higher in the tree.
                         let _ = environment
-                            .pop_reuse_token(&get_reuse_layout_info(layout_interner, union_layout));
+                            .pop_reuse_token(&get_reuse_layout_info(layout_interner, &reuse_info));
                     }
                     _ => {
                         // The token we inserted is no longer on the stack, it must have been consumed.
@@ -1105,10 +1157,20 @@ fn create_ptr_cast(arena: &Bump, symbol: Symbol) -> Expr {
 // TODO make sure all dup/drop operations are already inserted statically.
 // (e.g. not as a side effect of another operation) To make sure we can actually reuse.
 
-enum Reuse<'a> {
+enum UnionReuse<'a> {
     // Reuseable but the pointer *might* be null, which will cause a fresh allocation.
     Reusable(UnionLayout<'a>),
     Nonreusable,
+}
+
+enum Reuse<'a> {
+    Reusable(ReuseInfo<'a>),
+    Nonreusable,
+}
+
+enum ReuseInfo<'a> {
+    Union(UnionLayout<'a>),
+    Box(InLayout<'a>),
 }
 
 /**
@@ -1351,8 +1413,14 @@ fn symbol_layout_reusability<'a>(
 ) -> Reuse<'a> {
     match layout_interner.get_repr(*layout) {
         LayoutRepr::Union(union_layout) => {
-            can_reuse_union_layout_tag(union_layout, environment.get_symbol_tag(symbol))
+            match can_reuse_union_layout_tag(union_layout, environment.get_symbol_tag(symbol)) {
+                UnionReuse::Reusable(union_layout) => {
+                    Reuse::Reusable(ReuseInfo::Union(union_layout))
+                }
+                UnionReuse::Nonreusable => Reuse::Nonreusable,
+            }
         }
+        LayoutRepr::Boxed(box_layout) => Reuse::Reusable(ReuseInfo::Box(box_layout)),
         // Strings literals are constants.
         // Arrays are probably given to functions and reused there. Little use to reuse them here.
         _ => Reuse::Nonreusable,
@@ -1362,13 +1430,13 @@ fn symbol_layout_reusability<'a>(
 /**
    Check if a union layout can be reused. by verifying if the tag is not nullable.
 */
-fn can_reuse_union_layout_tag(union_layout: UnionLayout, tag_id_option: Option<Tag>) -> Reuse {
+fn can_reuse_union_layout_tag(union_layout: UnionLayout, tag_id_option: Option<Tag>) -> UnionReuse {
     match union_layout {
-        UnionLayout::NonRecursive(_) => Reuse::Nonreusable,
+        UnionLayout::NonRecursive(_) => UnionReuse::Nonreusable,
         // Non nullable union layouts
         UnionLayout::Recursive(_) | UnionLayout::NonNullableUnwrapped(_) => {
             // Non nullable union layouts can always be reused.
-            Reuse::Reusable(union_layout)
+            UnionReuse::Reusable(union_layout)
         }
         // Nullable union layouts
         UnionLayout::NullableWrapped { .. } | UnionLayout::NullableUnwrapped { .. } => {
@@ -1376,16 +1444,16 @@ fn can_reuse_union_layout_tag(union_layout: UnionLayout, tag_id_option: Option<T
                 Some(tag_id) => {
                     if union_layout.tag_is_null(tag_id) {
                         // Symbol of layout is always null, so it can't ever be reused.
-                        Reuse::Nonreusable
+                        UnionReuse::Nonreusable
                     } else {
                         // Symbol of layout is not null, so it can be reused.
-                        Reuse::Reusable(union_layout)
+                        UnionReuse::Reusable(union_layout)
                     }
                 }
                 None => {
                     // Symbol of layout might be null, so it might be reused.
                     // If null will cause null pointer and fresh allocation.
-                    Reuse::Reusable(union_layout)
+                    UnionReuse::Reusable(union_layout)
                 }
             }
         }
@@ -1412,9 +1480,14 @@ fn drop_unused_reuse_tokens<'a>(
 
 fn get_reuse_layout_info<'a, 'i>(
     layout_interner: &'i STLayoutInterner<'a>,
-    union_layout: UnionLayout<'a>,
+    reuse_info: &ReuseInfo<'a>,
 ) -> TokenLayout {
-    let (size, alignment) = union_layout.data_size_and_alignment(layout_interner);
+    let (size, alignment) = match reuse_info {
+        ReuseInfo::Union(union_layout) => union_layout.data_size_and_alignment(layout_interner),
+        ReuseInfo::Box(box_layout) => layout_interner
+            .get_repr(*box_layout)
+            .stack_size_and_alignment(layout_interner),
+    };
 
     TokenLayout { size, alignment }
 }

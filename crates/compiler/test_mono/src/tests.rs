@@ -3216,3 +3216,44 @@ fn linked_list_filter() {
         "#
     )
 }
+
+#[mono_test]
+fn reuse_boxed() {
+    indoc!(
+        r#"
+        app "test" provides [main] to "./platform"
+
+        Structure : { a: I64, b: I64 }
+
+        main =
+            s1 : Structure
+            s1 = { a: 1, b: 2 }
+            b1 = Box.box s1
+            s2 : Structure
+            s2 = { a: 3, b: 4 }
+            b2 = Box.box s2
+            "done"
+        "#
+    )
+}
+
+#[mono_test]
+fn reuse_boxed_for_union() {
+    indoc!(
+        r#"
+        app "test" provides [main] to "./platform"
+
+        Structure : { a: I64, b: I64 }
+
+        LinkedList : [Nil, Cons I64 LinkedList]
+
+        main =
+            s1 : Structure
+            s1 = { a: 1, b: 2 }
+            b1 = Box.box s1
+            s2 : LinkedList
+            s2 = Cons 3 Nil
+            "done"
+        "#
+    )
+}

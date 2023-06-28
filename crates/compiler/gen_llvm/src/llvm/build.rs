@@ -1149,12 +1149,6 @@ pub(crate) fn build_exp_expr<'a, 'ctx>(
             let (tag_ptr, layout) = scope.load_symbol_and_layout(symbol);
             let tag_ptr = tag_ptr.into_pointer_value();
 
-            // reset is only generated for union values
-            let union_layout = match layout_interner.get_repr(layout) {
-                LayoutRepr::Union(ul) => ul,
-                _ => unreachable!(),
-            };
-
             let ctx = env.context;
             let check_if_null = ctx.append_basic_block(parent, "check_if_null");
             let check_if_unique = ctx.append_basic_block(parent, "check_if_unique");

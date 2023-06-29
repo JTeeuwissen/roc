@@ -221,7 +221,10 @@ pub fn occurring_variables_expr(expr: &Expr<'_>, result: &mut MutSet<Symbol>) {
             result.insert(*symbol);
         }
 
-        UnionAtIndex {
+        UnionFieldPtrAtIndex {
+            structure: symbol, ..
+        }
+        | UnionAtIndex {
             structure: symbol, ..
         } => {
             result.insert(*symbol);
@@ -914,7 +917,7 @@ impl<'a, 'i> Context<'a, 'i> {
                 self.arena.alloc(Stmt::Let(z, v, l, b))
             }
 
-            UnionAtIndex { structure: x, .. } => {
+            UnionAtIndex { structure: x, .. } | UnionFieldPtrAtIndex { structure: x, .. } => {
                 let b = self.add_dec_if_needed(x, b, b_live_vars);
                 let info_x = self.get_var_info(x);
                 let b = if info_x.consume {

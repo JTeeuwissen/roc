@@ -389,7 +389,10 @@ fn insert_reset<'a>(
 
     while let Stmt::Let(symbol, expr, expr_layout, rest) = stmt {
         match &expr {
-            StructAtIndex { .. } | GetTagId { .. } | UnionAtIndex { .. } => {
+            StructAtIndex { .. }
+            | GetTagId { .. }
+            | UnionAtIndex { .. }
+            | UnionFieldPtrAtIndex { .. } => {
                 stack.push((symbol, expr, expr_layout));
                 stmt = rest;
             }
@@ -944,7 +947,8 @@ fn has_live_var_expr<'a>(expr: &'a Expr<'a>, needle: Symbol) -> bool {
         | Expr::Struct(fields) => fields.iter().any(|s| *s == needle),
         Expr::StructAtIndex { structure, .. }
         | Expr::GetTagId { structure, .. }
-        | Expr::UnionAtIndex { structure, .. } => *structure == needle,
+        | Expr::UnionAtIndex { structure, .. }
+        | Expr::UnionFieldPtrAtIndex { structure, .. } => *structure == needle,
         Expr::EmptyArray => false,
         Expr::Reuse {
             symbol, arguments, ..

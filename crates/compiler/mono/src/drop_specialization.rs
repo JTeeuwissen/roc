@@ -211,7 +211,18 @@ fn specialize_drops_stmt<'a, 'i>(
                     // TODO perhaps we need the union_layout later as well? if so, create a new function/map to store it.
                     environment.add_union_child(*structure, *binding, *tag_id, *index);
                     // Generated code might know the tag of the union without switching on it.
-                    // So if we unionAtIndex, we must know the tag and we can use it to specialize the drop.
+                    // So if we UnionAtIndex, we must know the tag and we can use it to specialize the drop.
+                    environment.symbol_tag.insert(*structure, *tag_id);
+                    alloc_let_with_continuation!(environment)
+                }
+                Expr::UnionFieldPtrAtIndex {
+                    structure,
+                    tag_id,
+                    union_layout: _,
+                    index: _,
+                } => {
+                    // Generated code might know the tag of the union without switching on it.
+                    // So if we UnionFieldPtrAtIndex, we must know the tag and we can use it to specialize the drop.
                     environment.symbol_tag.insert(*structure, *tag_id);
                     alloc_let_with_continuation!(environment)
                 }
@@ -591,8 +602,9 @@ fn specialize_drops_stmt<'a, 'i>(
                     updated_stmt
                 }
             }
-            ModifyRc::DecRef(_) => {
-                // Inlining has no point, since it doesn't decrement it's children
+            ModifyRc::DecRef(_) | ModifyRc::Free(_) => {
+                // These operations are not recursive (the children are not touched)
+                // so inlining is not useful
                 arena.alloc(Stmt::Refcounting(
                     *rc,
                     specialize_drops_stmt(
@@ -1040,8 +1052,10 @@ fn specialize_union<'a, 'i>(
                                             ))
                                         }),
                                         arena.alloc(Stmt::Refcounting(
-                                            // TODO this could be replaced by a free if ever added to the IR.
-                                            ModifyRc::DecRef(*symbol),
+                                            // we know for sure that the allocation is unique at
+                                            // this point. Therefore we can free (or maybe reuse)
+                                            // without checking the refcount again.
+                                            ModifyRc::Free(*symbol),
                                             continuation,
                                         )),
                                     )
@@ -1110,8 +1124,10 @@ fn specialize_boxed<'a, 'i>(
                 // - free the box
                 |_, _, continuation| {
                     arena.alloc(Stmt::Refcounting(
-                        // TODO can be replaced by free if ever added to the IR.
-                        ModifyRc::DecRef(*symbol),
+                        // we know for sure that the allocation is unique at
+                        // this point. Therefore we can free (or maybe reuse)
+                        // without checking the refcount again.
+                        ModifyRc::Free(*symbol),
                         continuation,
                     ))
                 },
@@ -1686,7 +1702,12 @@ fn low_level_no_rc(lowlevel: &LowLevel) -> RC {
             unreachable!("These lowlevel operations are turned into mono Expr's")
         }
 
-        PtrCast | PtrWrite | RefCountIncRcPtr | RefCountDecRcPtr | RefCountIncDataPtr
+        // only inserted for internal purposes. RC should not touch it
+        PtrStore => RC::NoRc,
+        PtrLoad => RC::NoRc,
+        Alloca => RC::NoRc,
+
+        PtrClearTagId | PtrCast | RefCountIncRcPtr | RefCountDecRcPtr | RefCountIncDataPtr
         | RefCountDecDataPtr | RefCountIsUnique => {
             unreachable!("Only inserted *after* borrow checking: {:?}", lowlevel);
         }

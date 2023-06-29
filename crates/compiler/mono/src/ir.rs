@@ -454,34 +454,6 @@ impl<'a> Proc<'a> {
             *proc = new_proc;
         }
     }
-
-    fn make_tail_recursive(&mut self, env: &mut Env<'a, '_>) {
-        let mut args = Vec::with_capacity_in(self.args.len(), env.arena);
-        let mut proc_args = Vec::with_capacity_in(self.args.len(), env.arena);
-
-        for (layout, symbol) in self.args {
-            let new = env.unique_symbol();
-            args.push((*layout, *symbol, new));
-            proc_args.push((*layout, new));
-        }
-
-        use self::SelfRecursive::*;
-        if let SelfRecursive(id) = self.is_self_recursive {
-            let transformed = crate::tail_recursion::make_tail_recursive(
-                env.arena,
-                id,
-                self.name,
-                self.body.clone(),
-                args.into_bump_slice(),
-                self.ret_layout,
-            );
-
-            if let Some(with_tco) = transformed {
-                self.body = with_tco;
-                self.args = proc_args.into_bump_slice();
-            }
-        }
-    }
 }
 
 /// A host-exposed function must be specialized; it's a seed for subsequent specializations
@@ -1069,14 +1041,11 @@ impl<'a> Procs<'a> {
 
     pub fn get_specialized_procs_without_rc(
         self,
-        env: &mut Env<'a, '_>,
     ) -> (MutMap<(Symbol, ProcLayout<'a>), Proc<'a>>, ProcsBase<'a>) {
         let mut specialized_procs =
             MutMap::with_capacity_and_hasher(self.specialized.len(), default_hasher());
 
-        for (symbol, layout, mut proc) in self.specialized.into_iter_assert_done() {
-            proc.make_tail_recursive(env);
-
+        for (symbol, layout, proc) in self.specialized.into_iter_assert_done() {
             let key = (symbol, layout);
             specialized_procs.insert(key, proc);
         }
@@ -1447,6 +1416,11 @@ impl<'a, 'i> Env<'a, 'i> {
         Symbol::new(self.home, ident_id)
     }
 
+    pub fn named_unique_symbol(&mut self, name: &str) -> Symbol {
+        let ident_id = self.ident_ids.add_str(name);
+        Symbol::new(self.home, ident_id)
+    }
+
     pub fn next_update_mode_id(&mut self) -> UpdateModeId {
         self.update_mode_ids.next_id()
     }
@@ -1689,6 +1663,9 @@ pub enum ModifyRc {
     /// sometimes we know we already dealt with the elements (e.g. by copying them all over
     /// to a new list) and so we can just do a DecRef, which is much cheaper in such a case.
     DecRef(Symbol),
+    /// Unconditionally deallocate the memory. For tag union that do pointer tagging (store the tag
+    /// id in the pointer) the backend has to clear the tag id!
+    Free(Symbol),
 }
 
 impl ModifyRc {
@@ -1718,6 +1695,10 @@ impl ModifyRc {
                 .text("decref ")
                 .append(symbol_to_doc(alloc, symbol, pretty))
                 .append(";"),
+            Free(symbol) => alloc
+                .text("free ")
+                .append(symbol_to_doc(alloc, symbol, pretty))
+                .append(";"),
         }
     }
 
@@ -1728,6 +1709,7 @@ impl ModifyRc {
             Inc(symbol, _) => *symbol,
             Dec(symbol) => *symbol,
             DecRef(symbol) => *symbol,
+            Free(symbol) => *symbol,
         }
     }
 }
@@ -1921,6 +1903,12 @@ pub enum Expr<'a> {
     },
 
     UnionAtIndex {
+        structure: Symbol,
+        tag_id: TagIdIntType,
+        union_layout: UnionLayout<'a>,
+        index: u64,
+    },
+    UnionFieldPtrAtIndex {
         structure: Symbol,
         tag_id: TagIdIntType,
         union_layout: UnionLayout<'a>,
@@ -2143,6 +2131,19 @@ impl<'a> Expr<'a> {
                 ..
             } => text!(alloc, "UnionAtIndex (Id {}) (Index {}) ", tag_id, index)
                 .append(symbol_to_doc(alloc, *structure, pretty)),
+
+            UnionFieldPtrAtIndex {
+                tag_id,
+                structure,
+                index,
+                ..
+            } => text!(
+                alloc,
+                "UnionFieldPtrAtIndex (Id {}) (Index {}) ",
+                tag_id,
+                index
+            )
+            .append(symbol_to_doc(alloc, *structure, pretty)),
         }
     }
 
@@ -7729,6 +7730,22 @@ fn substitute_in_expr<'a>(
             }),
             None => None,
         },
+
+        // currently only used for tail recursion modulo cons (TRMC)
+        UnionFieldPtrAtIndex {
+            structure,
+            tag_id,
+            index,
+            union_layout,
+        } => match substitute(subs, *structure) {
+            Some(structure) => Some(UnionFieldPtrAtIndex {
+                structure,
+                tag_id: *tag_id,
+                index: *index,
+                union_layout: *union_layout,
+            }),
+            None => None,
+        },
     }
 }
 
@@ -9929,6 +9946,9 @@ where
             }
             LayoutRepr::Boxed(boxed) => {
                 stack.push(layout_interner.get(boxed));
+            }
+            LayoutRepr::Ptr(inner) => {
+                stack.push(layout_interner.get(inner));
             }
             LayoutRepr::Union(union_layout) => match union_layout {
                 UnionLayout::NonRecursive(tags) => {

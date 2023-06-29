@@ -141,6 +141,7 @@ impl<'a> CodeGenHelp<'a> {
                 let jp_decref = JoinPointId(self.create_symbol(ident_ids, "jp_decref"));
                 HelperOp::DecRef(jp_decref)
             }
+            ModifyRc::Free(_) => unreachable!("free should be handled by the backend directly"),
         };
 
         let mut ctx = Context {
@@ -579,6 +580,11 @@ impl<'a> CodeGenHelp<'a> {
                 LayoutRepr::Boxed(inner)
             }
 
+            LayoutRepr::Ptr(inner) => {
+                let inner = self.replace_rec_ptr(ctx, layout_interner, inner);
+                LayoutRepr::Ptr(inner)
+            }
+
             LayoutRepr::LambdaSet(lambda_set) => {
                 return self.replace_rec_ptr(ctx, layout_interner, lambda_set.representation)
             }
@@ -723,7 +729,7 @@ impl<'a> CallerProc<'a> {
 
         let ptr_write = Expr::Call(Call {
             call_type: CallType::LowLevel {
-                op: LowLevel::PtrWrite,
+                op: LowLevel::PtrStore,
                 update_mode: UpdateModeId::BACKEND_DUMMY,
             },
             arguments: arena.alloc([Symbol::ARG_3, call_result]),
@@ -848,5 +854,6 @@ fn layout_needs_helper_proc<'a>(
         LayoutRepr::LambdaSet(_) => true,
         LayoutRepr::RecursivePointer(_) => false,
         LayoutRepr::Boxed(_) => true,
+        LayoutRepr::Ptr(_) => false,
     }
 }

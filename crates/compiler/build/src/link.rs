@@ -83,7 +83,7 @@ pub fn get_relative_path(sub_path: &Path) -> Option<PathBuf> {
 
         // We need to support paths like ./roc, ./bin/roc, ./target/debug/roc and tests like ./target/debug/deps/valgrind-63c787aa176d1277
         // This requires dropping up to 3 directories.
-        for _ in 0..=3 {
+        for _ in 0..=4 {
             if let Some(curr_parent) = curr_parent_opt {
                 let potential_path = curr_parent.join(sub_path);
 

@@ -6,8 +6,8 @@ app "cfold"
 # adapted from https://github.com/koka-lang/koka/blob/master/test/bench/haskell/cfold.hs
 main : Task.Task {} []
 main =
-    # e = mkExpr 20 1 # Benchmarks
-    e = mkExpr 3 1 # Dynamic Analysis
+    e = mkExpr 20 1 # Benchmarks
+    # e = mkExpr 3 1 # Dynamic Analysis
     unoptimized = eval e
     optimized = eval (constFolding (reassoc e))
 

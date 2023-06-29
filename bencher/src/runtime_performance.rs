@@ -44,20 +44,20 @@ fn create_compiler_paths(
         compiler_paths[ci] = match configuration.variant {
             ConfigurationVariant::Roc(roc_configuration) => {
                 let output_path_buf = roc_binaries_path.join(configuration.name);
-                // Command::new("cargo")
-                //     .current_dir(Path::new(roc_path))
-                //     .env("RUSTFLAGS", roc_configuration.flags())
-                //     .args([
-                //         "build",
-                //         "--bin=roc",
-                //         "--release",
-                //         "--target-dir",
-                //         output_path_buf.to_str().unwrap(),
-                //     ])
-                //     .stderr(Stdio::inherit())
-                //     .stdout(Stdio::inherit())
-                //     .output()
-                //     .unwrap();
+                Command::new("cargo")
+                    .current_dir(Path::new(roc_path))
+                    .env("RUSTFLAGS", roc_configuration.flags())
+                    .args([
+                        "build",
+                        "--bin=roc",
+                        "--release",
+                        "--target-dir",
+                        output_path_buf.to_str().unwrap(),
+                    ])
+                    .stderr(Stdio::inherit())
+                    .stdout(Stdio::inherit())
+                    .output()
+                    .unwrap();
                 output_path_buf
                     .join("release/roc")
                     .to_str()
@@ -132,7 +132,13 @@ fn run_time_benchmarks(
                             configuration.name.replace('/', ""),
                             benchmark.name.replace('/', ""),
                         ),
-                        format!("ulimit -s unlimited && \"{}\"", executable_path),
+                        match configuration.variant {
+                            ConfigurationVariant::Roc(_) => format!(
+                                "ulimit -s unlimited && LD_PRELOAD=/usr/lib/libmimalloc.so \"{}\"",
+                                executable_path
+                            ),
+                            _ => format!("ulimit -s unlimited && \"{}\"", executable_path),
+                        },
                     ]
                 })
                 .collect::<std::vec::Vec<_>>()
@@ -203,7 +209,7 @@ fn build_benchmarks(
                             benchmarks_path.join(benchmark.roc_path).to_str().unwrap(),
                         ])
                         .stderr(Stdio::inherit())
-                        .stdout(Stdio::inherit())
+                        .stdout(Stdio::piped())
                         .output()
                         .expect("failed to execute process");
                     let stdout = std::str::from_utf8(&output.stdout).expect("invalid utf8");

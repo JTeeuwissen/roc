@@ -8,14 +8,16 @@
 #include <sys/mman.h> // for mmap
 #include <signal.h> // for kill
 
-void* roc_alloc(size_t size, unsigned int alignment) { return malloc(size); }
+#include <mimalloc.h>
+
+void* roc_alloc(size_t size, unsigned int alignment) { return mi_malloc(size); }
 
 void* roc_realloc(void* ptr, size_t new_size, size_t old_size,
                   unsigned int alignment) {
-  return realloc(ptr, new_size);
+  return mi_realloc(ptr, new_size);
 }
 
-void roc_dealloc(void* ptr, unsigned int alignment) { free(ptr); }
+void roc_dealloc(void* ptr, unsigned int alignment) { mi_free(ptr); }
 
 void roc_panic(void* ptr, unsigned int alignment) {
   char* msg = (char*)ptr;

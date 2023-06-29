@@ -132,13 +132,7 @@ fn run_time_benchmarks(
                             configuration.name.replace('/', ""),
                             benchmark.name.replace('/', ""),
                         ),
-                        match configuration.variant {
-                            ConfigurationVariant::Roc(_) => format!(
-                                "ulimit -s unlimited && LD_PRELOAD=/usr/lib/libmimalloc.so \"{}\"",
-                                executable_path
-                            ),
-                            _ => format!("ulimit -s unlimited && \"{}\"", executable_path),
-                        },
+                        format!("ulimit -s unlimited && \"{}\"", executable_path),
                     ]
                 })
                 .collect::<std::vec::Vec<_>>()

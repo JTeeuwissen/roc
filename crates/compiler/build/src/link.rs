@@ -360,6 +360,9 @@ pub fn build_c_host_native(
                     "-lpthread",
                     "-ldl",
                     "-lrt",
+                    "-L/var/empty/local/lib/",
+                    "-I/var/empty/local/include/mimalloc-2.1/",
+                    "-lmimalloc",
                     "-lutil",
                 ]);
             }

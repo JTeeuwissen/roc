@@ -9,7 +9,7 @@ IO a : Task.Task a []
 main : Task.Task {} []
 main =
     x : Expr
-    x = Var "x"
+    x = Var (Box.box "x")
 
     f : Expr
     f = pow x x
@@ -34,7 +34,7 @@ nestHelp = \{ s, f, m, x } ->
 
             Task.succeed (Step { s, f, m: (m - 1), x: w })
 
-Expr : [Val I32, Var Str, Add Expr Expr, Mul Expr Expr, Pow Expr Expr, Ln Expr]
+Expr : [Val I32, Var (Box Str), Add Expr Expr, Mul Expr Expr, Pow Expr Expr, Ln Expr]
 
 divmod : I32, I32 -> Result { div : I32, mod : I32 } [DivByZero]
 divmod = \l, r ->
@@ -136,7 +136,7 @@ d : Str, Expr -> Expr
 d = \x, expr ->
     when expr is
         Val _ -> Val 0
-        Var y -> if x == y then Val 1 else Val 0
+        Var y -> if x == (Box.unbox y) then Val 1 else Val 0
         Add f g -> add (d x f) (d x g)
         Mul f g -> add (mul f (d x g)) (mul g (d x f))
         Pow f g ->

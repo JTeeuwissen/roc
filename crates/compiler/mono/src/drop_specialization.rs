@@ -230,10 +230,6 @@ fn specialize_drops_stmt<'a, 'i>(
                     environment.add_box_child(*symbol, *binding);
                     alloc_let_with_continuation!(environment)
                 }
-
-                Expr::Reuse { .. } => {
-                    alloc_let_with_continuation!(environment)
-                }
                 Expr::Reset { symbol, .. } | Expr::ResetRef { symbol, .. } => {
                     let incremented_children = {
                         let mut todo_children = bumpalo::vec![in arena; *symbol];

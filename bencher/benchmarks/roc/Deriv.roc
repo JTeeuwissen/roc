@@ -19,20 +19,15 @@ main =
 
     Task.putLine "done"
 
+nestHelp : I64, (I64, Expr -> IO Expr), I64, Expr -> IO Expr
+nestHelp = \s, f, m, x -> when m is
+    0 -> Task.succeed x
+    _ ->
+        w <- Task.after (f (s - m) x)
+        nestHelp s f (m - 1) w
 
-nest : (I32, Expr -> IO Expr), I32, Expr -> IO Expr
-nest = \f, n, e -> Task.loop { s: n, f, m: n, x: e } nestHelp
-
-State : { s : I32, f : I32, Expr -> IO Expr, m : I32, x : Expr }
-
-nestHelp : State -> IO [Step State, Done Expr]
-nestHelp = \{ s, f, m, x } ->
-    when m is
-        0 -> Task.succeed (Done x)
-        _ ->
-            w <- Task.after (f (s - m) x)
-
-            Task.succeed (Step { s, f, m: (m - 1), x: w })
+nest : (I64, Expr -> IO Expr), I64, Expr -> IO Expr
+nest = \f, n, e -> nestHelp n f n e
 
 Expr : [Val I32, Var (Box Str), Add Expr Expr, Mul Expr Expr, Pow Expr Expr, Ln Expr]
 

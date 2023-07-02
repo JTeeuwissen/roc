@@ -15,7 +15,7 @@
 
 use crate::inc_dec_old::{collect_stmt, occurring_variables_expr, JPLiveVarMap, LiveVarSet};
 use crate::ir::{
-    BranchInfo, Call, Expr, ListLiteralElement, Proc, Stmt, UpdateModeId, UpdateModeIds,
+    BranchInfo, Call, Expr, ListLiteralElement, Proc, ReuseToken, Stmt, UpdateModeId, UpdateModeIds,
 };
 use crate::layout::{
     InLayout, Layout, LayoutInterner, LayoutRepr, STLayoutInterner, TagIdIntType, UnionLayout,
@@ -138,6 +138,7 @@ fn function_s<'a, 'i>(
                 tag_layout,
                 tag_id,
                 arguments,
+                reuse: None,
             } => {
                 match may_reuse(env.interner, *tag_layout, *tag_id, *layout, c) {
                     Foo::Cast => {
@@ -146,10 +147,12 @@ fn function_s<'a, 'i>(
                         // for now, always overwrite the tag ID just to be sure
                         let update_tag_id = true;
 
-                        let new_expr = Expr::Reuse {
-                            symbol: new_symbol,
-                            update_mode: w.update_mode,
-                            update_tag_id,
+                        let new_expr = Expr::Tag {
+                            reuse: Some(ReuseToken {
+                                symbol: new_symbol,
+                                update_mode: w.update_mode,
+                                update_tag_id,
+                            }),
                             tag_layout: *tag_layout,
                             tag_id: *tag_id,
                             arguments,
@@ -184,10 +187,12 @@ fn function_s<'a, 'i>(
                         // for now, always overwrite the tag ID just to be sure
                         let update_tag_id = true;
 
-                        let new_expr = Expr::Reuse {
-                            symbol: w.symbol,
-                            update_mode: w.update_mode,
-                            update_tag_id,
+                        let new_expr = Expr::Tag {
+                            reuse: Some(ReuseToken {
+                                symbol: w.symbol,
+                                update_mode: w.update_mode,
+                                update_tag_id,
+                            }),
                             tag_layout: *tag_layout,
                             tag_id: *tag_id,
                             arguments,
@@ -409,7 +414,6 @@ fn insert_reset<'a>(
             | Struct(_)
             | Array { .. }
             | EmptyArray
-            | Reuse { .. }
             | Reset { .. }
             | RuntimeErrorFunction(_) => break,
 
@@ -465,7 +469,11 @@ fn function_d_main<'a, 'i>(
     match stmt {
         Let(symbol, expr, layout, continuation) => {
             match expr {
-                Expr::Tag { arguments, .. } if arguments.iter().any(|s| *s == x) => {
+                Expr::Tag {
+                    arguments,
+                    reuse: None,
+                    ..
+                } if arguments.iter().any(|s| *s == x) => {
                     // If the scrutinee `x` (the one that is providing memory) is being
                     // stored in a constructor, then reuse will probably not be able to reuse memory at runtime.
                     // It may work only if the new cell is consumed, but we ignore this case.
@@ -942,17 +950,19 @@ fn has_live_var_expr<'a>(expr: &'a Expr<'a>, needle: Symbol) -> bool {
             false
         }
         Expr::Tag {
-            arguments: fields, ..
+            arguments: fields,
+            reuse,
+            ..
+        } => {
+            reuse.map_or(false, |ReuseToken { symbol, .. }| needle == symbol)
+                || fields.iter().any(|s| *s == needle)
         }
-        | Expr::Struct(fields) => fields.iter().any(|s| *s == needle),
+        Expr::Struct(fields) => fields.iter().any(|s| *s == needle),
         Expr::StructAtIndex { structure, .. }
         | Expr::GetTagId { structure, .. }
         | Expr::UnionAtIndex { structure, .. }
         | Expr::UnionFieldPtrAtIndex { structure, .. } => *structure == needle,
         Expr::EmptyArray => false,
-        Expr::Reuse {
-            symbol, arguments, ..
-        } => needle == *symbol || arguments.iter().any(|s| *s == needle),
         Expr::Reset { symbol, .. } => needle == *symbol,
         Expr::ExprBox { symbol, .. } => needle == *symbol,
         Expr::ExprUnbox { symbol, .. } => needle == *symbol,

@@ -1,7 +1,7 @@
 use crate::borrow::{Ownership, ParamMap};
 use crate::ir::{
-    CallType, Expr, HigherOrderLowLevel, JoinPointId, ModifyRc, Param, Proc, ProcLayout, Stmt,
-    UpdateModeIds,
+    CallType, Expr, HigherOrderLowLevel, JoinPointId, ModifyRc, Param, Proc, ProcLayout,
+    ReuseToken, Stmt, UpdateModeIds,
 };
 use crate::layout::{InLayout, Layout, LayoutInterner, STLayoutInterner};
 use bumpalo::collections::Vec;
@@ -196,11 +196,18 @@ pub fn occurring_variables_expr(expr: &Expr<'_>, result: &mut MutSet<Symbol>) {
             elems: arguments, ..
         } => result.extend(arguments.iter().filter_map(|e| e.to_symbol())),
 
-        Tag { arguments, .. } | Struct(arguments) => {
+        Tag {
+            arguments,
+            reuse: None,
+            ..
+        }
+        | Struct(arguments) => {
             result.extend(arguments.iter().copied());
         }
-        Reuse {
-            symbol, arguments, ..
+        Tag {
+            arguments,
+            reuse: Some(ReuseToken { symbol, .. }),
+            ..
         } => {
             result.extend(arguments.iter().copied());
             result.insert(*symbol);
@@ -872,12 +879,11 @@ impl<'a, 'i> Context<'a, 'i> {
         live_vars.remove(&z);
 
         let new_b = match v {
-            Reuse { arguments: ys, .. } | Tag { arguments: ys, .. } | Struct(ys) => self
-                .add_inc_before_consume_all(
-                    ys,
-                    self.arena.alloc(Stmt::Let(z, v, l, b)),
-                    b_live_vars,
-                ),
+            Tag { arguments: ys, .. } | Struct(ys) => self.add_inc_before_consume_all(
+                ys,
+                self.arena.alloc(Stmt::Let(z, v, l, b)),
+                b_live_vars,
+            ),
 
             Array { elems, .. } => {
                 let ys = Vec::from_iter_in(elems.iter().filter_map(|e| e.to_symbol()), self.arena);

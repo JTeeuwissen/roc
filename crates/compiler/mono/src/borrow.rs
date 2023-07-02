@@ -740,7 +740,7 @@ impl<'a> BorrowInfState<'a> {
                 ..
             } => {
                 if let Some(r) = reuse {
-                    self.own_args_if_param(&[r.symbol]);
+                    self.own_var(r.symbol);
                 }
 
                 self.own_var(z);

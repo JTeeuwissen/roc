@@ -19,14 +19,14 @@ main =
 
     Task.putLine "done"
 
-nestHelp : I64, (I64, Expr -> IO Expr), I64, Expr -> IO Expr
+nestHelp : I32, (I32, Expr -> IO Expr), I32, Expr -> IO Expr
 nestHelp = \s, f, m, x -> when m is
     0 -> Task.succeed x
     _ ->
         w <- Task.after (f (s - m) x)
         nestHelp s f (m - 1) w
 
-nest : (I64, Expr -> IO Expr), I64, Expr -> IO Expr
+nest : (I32, Expr -> IO Expr), I32, Expr -> IO Expr
 nest = \f, n, e -> nestHelp n f n e
 
 Expr : [Val I32, Var (Box Str), Add Expr Expr, Mul Expr Expr, Pow Expr Expr, Ln Expr]

@@ -402,11 +402,6 @@ fn insert_reset<'a>(
                 stmt = rest;
             }
 
-            ExprBox { .. } | ExprUnbox { .. } => {
-                // TODO
-                break;
-            }
-
             Literal(_)
             | NullPointer
             | Call(_)
@@ -964,8 +959,6 @@ fn has_live_var_expr<'a>(expr: &'a Expr<'a>, needle: Symbol) -> bool {
         | Expr::UnionFieldPtrAtIndex { structure, .. } => *structure == needle,
         Expr::EmptyArray => false,
         Expr::Reset { symbol, .. } => needle == *symbol,
-        Expr::ExprBox { symbol, .. } => needle == *symbol,
-        Expr::ExprUnbox { symbol, .. } => needle == *symbol,
         Expr::RuntimeErrorFunction(_) => false,
         Expr::ResetRef { .. } => unreachable!("ResetRef is not used for the old style RC."),
     }

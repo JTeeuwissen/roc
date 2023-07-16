@@ -17,42 +17,6 @@ Color : [Red, Black]
 
 Tree a b : [Leaf, Node Color (Tree a b) a b (Tree a b)]
 
-isRed : Tree a b -> Bool
-isRed = \tree ->
-    when tree is
-        Node Red _ _ _ _ -> Bool.true
-        _ -> Bool.false
-
-balanceLeft : Tree a b, a, b, Tree a b -> Tree a b
-balanceLeft = \l, k, v, r ->
-    when l is
-        Leaf ->
-            Leaf
-
-        Node _ (Node Red lx kx vx rx) ky vy ry ->
-            Node Red (Node Black lx kx vx rx) ky vy (Node Black ry k v r)
-
-        Node _ ly ky vy (Node Red lx kx vx rx) ->
-            Node Red (Node Black ly ky vy lx) kx vx (Node Black rx k v r)
-
-        Node _ lx kx vx rx ->
-            Node Black (Node Red lx kx vx rx) k v r
-
-balanceRight : Tree a b, a, b, Tree a b -> Tree a b
-balanceRight = \l, k, v, r ->
-    when r is
-        Leaf ->
-            Leaf
-
-        Node _ (Node Red lx kx vx rx) ky vy ry ->
-            Node Red (Node Black l k v lx) kx vx (Node Black rx ky vy ry)
-
-        Node _ lx kx vx (Node Red ly ky vy ry) ->
-            Node Red (Node Black l k v lx) kx vx (Node Black ly ky vy ry)
-
-        Node _ lx kx vx rx ->
-            Node Black l k v (Node Red lx kx vx rx)
-
 ins : Tree I32 Bool, I32, Bool -> Tree I32 Bool
 ins = \tree, kx, vx ->
     when tree is
@@ -68,14 +32,38 @@ ins = \tree, kx, vx ->
         Node Black a ky vy b ->
             when Num.compare kx ky is
                 LT ->
-                    if isRed a
-                        then balanceLeft (ins a kx vx) ky vy b
-                        else Node Black (ins a kx vx) ky vy b
+                    when a is
+                        Node Red _ _ _ _  -> when (ins a kx vx) is
+                            Leaf ->
+                                Leaf
+
+                            Node _ (Node Red lx2 kx2 vx2 rx2) ky2 vy2 ry2 ->
+                                Node Red (Node Black lx2 kx2 vx2 rx2) ky2 vy2 (Node Black ry2 ky vy b)
+
+                            Node _ ly2 ky2 vy2 (Node Red lx2 kx2 vx2 rx2) ->
+                                Node Red (Node Black ly2 ky2 vy2 lx2) kx2 vx2 (Node Black rx2 ky vy b)
+
+                            Node _ lx2 kx2 vx2 rx2 ->
+                                Node Black (Node Red lx2 kx2 vx2 rx2) ky vy b
+                        
+                        _ -> Node Black (ins a kx vx) ky vy b
 
                 GT ->
-                    if isRed b
-                        then balanceRight a ky vy (ins b kx vx)
-                        else Node Black a ky vy (ins b kx vx)
+                    when b is
+                        Node Red _ _ _ _ -> when (ins b kx vx) is
+                            Leaf ->
+                                Leaf
+
+                            Node _ (Node Red lx2 kx2 vx2 rx2) ky2 vy2 ry2 ->
+                                Node Red (Node Black a ky vy  lx2) kx2 vx2 (Node Black rx2 ky2 vy2 ry2)
+
+                            Node _ lx2 kx2 vx2 (Node Red ly2 ky2 vy2 ry2) ->
+                                Node Red (Node Black a ky vy  lx2) kx2 vx2 (Node Black ly2 ky2 vy2 ry2)
+
+                            Node _ lx2 kx2 vx2 rx2 ->
+                                Node Black a ky vy  (Node Red lx2 kx2 vx2 rx2)
+
+                        _ -> Node Black a ky vy (ins b kx vx)
 
                 EQ ->
                     Node Black a kx vx b
@@ -87,7 +75,9 @@ setBlack = \tree ->
         _ -> tree
 
 insert : Tree I32 Bool, I32, Bool -> Tree I32 Bool
-insert = \t, k, v -> if isRed t then setBlack (ins t k v) else ins t k v
+insert = \t, k, v -> when t is
+    Node Red _ _ _ _  -> setBlack (ins t k v)
+    _ -> ins t k v
 
 fold : (a, b, omega -> omega), Tree a b, omega -> omega
 fold = \f, tree, b ->

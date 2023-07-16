@@ -41,9 +41,8 @@ fold = \f, tree, b ->
 main : Task.Task {} []
 main =
     ms : ConsList Map
-    ms = makeMap 5 4200000 # Benchmarks
-    # ms = makeMap 5 10 # Dynamic Analysis
-
+    ms = makeMap 5 4200000
+    
     when ms is
         Cons head _ ->
             val = fold (\_, v, r -> if v then r + 1 else r) head 0

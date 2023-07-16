@@ -5,8 +5,7 @@ app "nqueens"
 
 main : Task.Task {} []
 main =
-    queens 13 # Benchmarks
-    # queens 6 # Dynamic Analysis
+    queens 13
         |> Num.toStr
         |> Task.putLine
 

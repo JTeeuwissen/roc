@@ -97,7 +97,7 @@ fun make-tree(freq : int, n: int): div list<tree>
 
 
 pub fun main()
-  val trees = make-tree(5,4200000); // todo: read first command line arg for size
+  val trees = make-tree(5,4200000);
   val v = trees.head(Leaf).fold(0) fn(k,v,r){ if (v) then r + 1 else r }
   v.println
 

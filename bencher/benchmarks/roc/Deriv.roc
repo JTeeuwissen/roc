@@ -14,8 +14,7 @@ main =
     f : Expr
     f = pow x x
 
-    _ <- Task.after (nest deriv 10 f) # Benchmarks
-    # _ <- Task.after (nest deriv 2 f) # Dynamic Analysis
+    _ <- Task.after (nest deriv 10 f)
 
     Task.putLine "done"
 

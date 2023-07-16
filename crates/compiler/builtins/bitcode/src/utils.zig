@@ -4,8 +4,8 @@ const always_inline = std.builtin.CallOptions.Modifier.always_inline;
 const Monotonic = std.builtin.AtomicOrder.Monotonic;
 
 const DEBUG_INCDEC = false;
-export var INC: u64 = 0;
-export var DEC: u64 = 0;
+export var INC: c_long = 0;
+export var DEC: c_long = 0;
 
 pub fn WithOverflow(comptime T: type) type {
     return extern struct { value: T, has_overflowed: bool };

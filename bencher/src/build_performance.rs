@@ -7,10 +7,9 @@ use std::{
     vec::Vec,
 };
 
+use crate::roc_configuration::RocConfiguration;
 use csv::Writer;
 use regex::Regex;
-
-use crate::roc_configuration::RocConfiguration;
 
 pub(crate) fn static_performance(
     benchmarks_path: &Path,
@@ -35,18 +34,16 @@ pub(crate) fn static_performance(
         println!("Configuration:\n{}", configuration.name);
 
         for (bi, benchmark) in BENCHMARKS.iter().enumerate() {
-            let output = Command::new("cargo")
+            let output = Command::new("sh")
                 .current_dir(roc_path)
                 .env("RUSTFLAGS", configuration.configuration.flags())
                 .env("ROC_PRINT_IR_AFTER_RC", "1")
                 .args([
-                    "run",
-                    "--",
-                    "run",
-                    "--optimize",
-                    "--debug",
-                    "--linker=legacy",
-                    benchmarks_path.join(benchmark.path).to_str().unwrap(),
+                    "-c",
+                    &format!(
+                        "ulimit -s unlimited && cargo run -- run --optimize --debug --linker=legacy {}",
+                        benchmarks_path.join(benchmark.path).to_str().unwrap()
+                    ),
                 ])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::inherit())
@@ -214,7 +211,7 @@ struct Configuration<'a> {
     configuration: RocConfiguration,
 }
 
-const BENCHMARKS: [Benchmark; 5] = [
+const BENCHMARKS: [Benchmark; 6] = [
     Benchmark {
         name: "Deriv",
         path: "roc/Deriv.roc",
@@ -234,6 +231,10 @@ const BENCHMARKS: [Benchmark; 5] = [
     Benchmark {
         name: "RBTreeCk",
         path: "roc/RBTreeCk.roc",
+    },
+    Benchmark {
+        name: "RBTreeIn",
+        path: "roc/RBTreeIn.roc",
     },
 ];
 

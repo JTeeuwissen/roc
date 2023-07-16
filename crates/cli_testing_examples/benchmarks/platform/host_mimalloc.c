@@ -8,19 +8,16 @@
 #include <sys/mman.h> // for mmap
 #include <signal.h> // for kill
 
-long ALLOC = 0;
-long DEALLOC = 0;
-extern long INC;
-extern long DEC;
-        
-void* roc_alloc(size_t size, unsigned int alignment) { ALLOC += 1; return malloc(size); }
+#include <mimalloc.h>
+
+void* roc_alloc(size_t size, unsigned int alignment) { return mi_malloc(size); }
 
 void* roc_realloc(void* ptr, size_t new_size, size_t old_size,
                   unsigned int alignment) {
-  return realloc(ptr, new_size);
+  return mi_realloc(ptr, new_size);
 }
 
-void roc_dealloc(void* ptr, unsigned int alignment) { DEALLOC += 1; free(ptr); }
+void roc_dealloc(void* ptr, unsigned int alignment) { mi_free(ptr); }
 
 void roc_panic(void* ptr, unsigned int alignment) {
   char* msg = (char*)ptr;
@@ -100,11 +97,6 @@ int main() {
     roc__mainForHost_1_exposed_generic(output);
 
     roc__mainForHost_0_caller(NULL, output, NULL);
-
-    fprintf(stderr, "alloc: %ld\n", ALLOC);
-    fprintf(stderr, "free: %ld\n", DEALLOC);
-    fprintf(stderr, "inc: %ld\n", INC);
-    fprintf(stderr, "dec: %ld\n", DEC);
 
     return 0;
 }

@@ -211,7 +211,7 @@ struct Configuration<'a> {
     configuration: RocConfiguration,
 }
 
-const BENCHMARKS: [Benchmark; 6] = [
+const BENCHMARKS: [Benchmark; 5] = [
     Benchmark {
         name: "Deriv",
         path: "roc/Deriv.roc",
@@ -231,10 +231,6 @@ const BENCHMARKS: [Benchmark; 6] = [
     Benchmark {
         name: "RBTreeCk",
         path: "roc/RBTreeCk.roc",
-    },
-    Benchmark {
-        name: "RBTreeIn",
-        path: "roc/RBTreeIn.roc",
     },
 ];
 

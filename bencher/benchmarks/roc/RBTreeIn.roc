@@ -1,4 +1,4 @@
-app "rbtree"
+app "rbtree-in"
     packages { pf: "../../../crates/cli_testing_examples/benchmarks/platform/main.roc" }
     imports [pf.Task]
     provides [main] to pf
@@ -33,36 +33,47 @@ ins = \tree, kx, vx ->
             when Num.compare kx ky is
                 LT ->
                     when a is
-                        Node Red _ _ _ _  -> when (ins a kx vx) is
-                            Leaf ->
-                                Leaf
+                        Leaf -> Node Black (ins a kx vx) ky vy b
+                        Node c _ _ _ _ -> when c is
+                            Black -> Node Black (ins a kx vx) ky vy b
+                            _ -> when (ins a kx vx) is
+                                Leaf ->
+                                    Leaf
 
-                            Node _ (Node Red lx2 kx2 vx2 rx2) ky2 vy2 ry2 ->
-                                Node Red (Node Black lx2 kx2 vx2 rx2) ky2 vy2 (Node Black ry2 ky vy b)
-
-                            Node _ ly2 ky2 vy2 (Node Red lx2 kx2 vx2 rx2) ->
-                                Node Red (Node Black ly2 ky2 vy2 lx2) kx2 vx2 (Node Black rx2 ky vy b)
-
-                            Node _ lx2 kx2 vx2 rx2 ->
-                                Node Black (Node Red lx2 kx2 vx2 rx2) ky vy b
-                        
-                        _ -> Node Black (ins a kx vx) ky vy b
-
+                                Node _ lz kz vz rz -> when lz is
+                                    (Node c2 lx2 kx2 vx2 rx2) -> when c2 is
+                                        Red -> Node Red (Node Black lx2 kx2 vx2 rx2) kz vz (Node Black rz ky vy b)
+                                        _ -> when rz is 
+                                            (Node c3 ly2 ky2 vy2 ry2) -> when c3 is
+                                                Red -> Node Red (Node Black lz kz vz ly2) ky2 vy2 (Node Black ry2 ky vy b)
+                                                _ -> Node Black (Node Red lz kz vz rz) ky vy b
+                                            _ -> Node Black (Node Red lz kz vz rz) ky vy b
+                                    _ -> when rz is 
+                                        Node c2 lx2 kx2 vx2 rx2 -> when c2 is
+                                            Red -> Node Red (Node Black lz kz vz lx2) kx2 vx2 (Node Black rx2 ky vy b)
+                                            _ -> Node Black (Node Red lz kz vz rz) ky vy b
+                                        _ -> Node Black (Node Red lz kz vz rz) ky vy b
                 GT ->
                     when b is
-                        Node Red _ _ _ _ -> when (ins b kx vx) is
-                            Leaf ->
-                                Leaf
+                        Node c _ _ _ _ -> when c is
+                            Red -> when (ins b kx vx) is
+                                Leaf ->
+                                    Leaf
 
-                            Node _ (Node Red lx2 kx2 vx2 rx2) ky2 vy2 ry2 ->
-                                Node Red (Node Black a ky vy  lx2) kx2 vx2 (Node Black rx2 ky2 vy2 ry2)
-
-                            Node _ lx2 kx2 vx2 (Node Red ly2 ky2 vy2 ry2) ->
-                                Node Red (Node Black a ky vy  lx2) kx2 vx2 (Node Black ly2 ky2 vy2 ry2)
-
-                            Node _ lx2 kx2 vx2 rx2 ->
-                                Node Black a ky vy  (Node Red lx2 kx2 vx2 rx2)
-
+                                Node _ lz kz vz rz -> when lz is
+                                    (Node c2 lx2 kx2 vx2 rx2) -> when c2 is
+                                        Red -> Node Red (Node Black a ky vy lx2) kx2 vx2 (Node Black rx2 kz vz rz)
+                                        _ -> when rz is
+                                            (Node c3 ly2 ky2 vy2 ry2) -> when c3 is
+                                                Red -> Node Red (Node Black a ky vy lz) kz vz (Node Black ly2 ky2 vy2 ry2)
+                                                _ -> Node Black a ky vy (Node Red lz kz vz rz)
+                                            _ -> Node Black a ky vy (Node Red lz kz vz rz)
+                                    _ -> when rz is
+                                        (Node c2 ly2 ky2 vy2 ry2) -> when c2 is
+                                            Red -> Node Red (Node Black a ky vy lz) kz vz (Node Black ly2 ky2 vy2 ry2)
+                                            _ -> Node Black a ky vy (Node Red lz kz vz rz)
+                                        _ -> Node Black a ky vy (Node Red lz kz vz rz)
+                            _ -> Node Black a ky vy (ins b kx vx)
                         _ -> Node Black a ky vy (ins b kx vx)
 
                 EQ ->

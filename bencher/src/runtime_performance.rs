@@ -304,7 +304,7 @@ enum ConfigurationVariant {
     Haskell,
 }
 
-const BENCHMARKS: [Benchmark; 6] = [
+const BENCHMARKS: [Benchmark; 5] = [
     Benchmark {
         name: "Deriv",
         roc_path: "roc/Deriv.roc",
@@ -334,12 +334,6 @@ const BENCHMARKS: [Benchmark; 6] = [
         roc_path: "roc/RBTreeCk.roc",
         koka_path: "koka/rbtree-ck.kk",
         haskell_path: "haskell/rbtree-ck.hs",
-    },
-    Benchmark {
-        name: "RBTreeIn",
-        roc_path: "roc/RBTreeIn.roc",
-        koka_path: "koka/rbtree-in.kk",
-        haskell_path: "haskell/rbtree-in.hs",
     },
 ];
 

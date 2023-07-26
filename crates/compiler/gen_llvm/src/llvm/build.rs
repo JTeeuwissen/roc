@@ -2872,7 +2872,7 @@ pub(crate) fn build_exp_stmt<'a, 'ctx>(
                 DecRef(symbol) => {
                     let (value, layout) = scope.load_symbol_and_layout(symbol);
 
-                    let lay = layout_interner.get_repr(layout);
+                    let lay = layout_interner.runtime_representation(layout);
                     match lay {
                         LayoutRepr::Builtin(Builtin::Str) => todo!(),
                         LayoutRepr::Builtin(Builtin::List(element_layout)) => {

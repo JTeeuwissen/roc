@@ -234,6 +234,9 @@ pub fn occurring_variables_expr(expr: &Expr<'_>, result: &mut MutSet<Symbol>) {
         }
 
         ResetRef { .. } => unreachable!("ResetRef is not used for the old style RC."),
+        ErasedMake { value, callee } => todo!(),
+        ErasedLoad { symbol, field } => todo!(),
+        FunctionPointer { lambda_name } => todo!(),
     }
 }
 
@@ -626,6 +629,11 @@ impl<'a, 'i> Context<'a, 'i> {
 
                 self.add_inc_before(arguments, ps, b, b_live_vars)
             }
+            ByPointer {
+                pointer,
+                ret_layout,
+                arg_layouts,
+            } => todo!(),
         }
     }
 
@@ -937,6 +945,9 @@ impl<'a, 'i> Context<'a, 'i> {
             }
 
             ResetRef { .. } => unreachable!("ResetRef is not used for the old style RC."),
+            ErasedMake { value, callee } => todo!(),
+            ErasedLoad { symbol, field } => todo!(),
+            FunctionPointer { lambda_name } => todo!(),
         };
 
         (new_b, live_vars)

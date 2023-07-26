@@ -17,8 +17,8 @@ use roc_module::low_level::LowLevel;
 use roc_module::symbol::{IdentIds, ModuleId, Symbol};
 
 use crate::ir::{
-    BranchInfo, Call, CallType, Expr, JoinPointId, ListLiteralElement, Literal, ModifyRc, Proc,
-    ProcLayout, Stmt, UpdateModeId,
+    BranchInfo, Call, CallType, ErasedField, Expr, JoinPointId, ListLiteralElement, Literal,
+    ModifyRc, Proc, ProcLayout, Stmt, UpdateModeId,
 };
 use crate::layout::{
     Builtin, InLayout, Layout, LayoutInterner, LayoutRepr, STLayoutInterner, UnionLayout,
@@ -70,7 +70,7 @@ fn specialize_drops_stmt<'a, 'i>(
     stmt: &Stmt<'a>,
 ) -> &'a Stmt<'a> {
     match stmt {
-        Stmt::Let(binding, expr, layout, continuation) => {
+        Stmt::Let(binding, expr @ Expr::Call(call), layout, continuation) => {
             environment.add_symbol_layout(*binding, *layout);
 
             macro_rules! alloc_let_with_continuation {
@@ -86,161 +86,54 @@ fn specialize_drops_stmt<'a, 'i>(
                 }};
             }
 
-            match expr {
-                Expr::Call(Call {
-                    call_type,
-                    arguments,
-                }) => {
-                    match call_type.clone().replace_lowlevel_wrapper() {
-                        CallType::LowLevel {
-                            op: LowLevel::ListGetUnsafe,
-                            ..
-                        } => {
-                            let [structure, index] = match arguments {
-                                [structure, index] => [structure, index],
-                                _ => unreachable!("List get should have two arguments"),
-                            };
-
-                            environment.add_list_child_symbol(*structure, *binding, index);
-
-                            alloc_let_with_continuation!(environment)
-                        }
-                        // Check whether the increments can be passed to the continuation.
-                        CallType::LowLevel { op, .. } => match low_level_no_rc(&op) {
-                            // It should be safe to pass the increments to the continuation.
-                            RC::NoRc => alloc_let_with_continuation!(environment),
-                            // We probably should not pass the increments to the continuation.
-                            RC::Rc | RC::Uknown => {
-                                let incremented_symbols = environment.incremented_symbols.drain();
-
-                                let new_stmt = alloc_let_with_continuation!(environment);
-
-                                // The new_environment might have inserted increments that were set to 0 before. We need to add th
-                                for (symbol, increment) in incremented_symbols.map.into_iter() {
-                                    environment
-                                        .incremented_symbols
-                                        .insert_count(symbol, increment);
-                                }
-
-                                new_stmt
-                            }
-                        },
-                        _ => {
-                            // Calls can modify the RC of the symbol.
-                            // If we move a increment of children after the function,
-                            // the function might deallocate the child before we can use it after the function.
-                            // If we move the decrement of the parent to before the function,
-                            // the parent might be deallocated before the function can use it.
-                            // Thus forget everything about any increments.
-
-                            let incremented_symbols = environment.incremented_symbols.drain();
-
-                            let new_stmt = alloc_let_with_continuation!(environment);
-
-                            // The new_environment might have inserted increments that were set to 0 before. We need to add th
-                            for (symbol, increment) in incremented_symbols.map.into_iter() {
-                                environment
-                                    .incremented_symbols
-                                    .insert_count(symbol, increment);
-                            }
-
-                            new_stmt
-                        }
-                    }
-                }
-
-                Expr::Tag {
-                    tag_id,
-                    arguments: children,
+            match call.call_type.clone().replace_lowlevel_wrapper() {
+                CallType::LowLevel {
+                    op: LowLevel::ListGetUnsafe,
                     ..
                 } => {
-                    environment.symbol_tag.insert(*binding, *tag_id);
+                    let [structure, index] = match call.arguments {
+                        [structure, index] => [structure, index],
+                        _ => unreachable!("List get should have two arguments"),
+                    };
 
-                    for (index, child) in children.iter().enumerate() {
-                        environment.add_union_child(*binding, *child, *tag_id, index as u64);
-                    }
-
-                    alloc_let_with_continuation!(environment)
-                }
-                Expr::Struct(children) => {
-                    for (index, child) in children.iter().enumerate() {
-                        environment.add_struct_child(*binding, *child, index as u64);
-                    }
+                    environment.add_list_child_symbol(*structure, *binding, index);
 
                     alloc_let_with_continuation!(environment)
                 }
-                Expr::Array {
-                    elems: children, ..
-                } => {
-                    for (index, child) in
-                        children
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(index, child)| match child {
-                                ListLiteralElement::Literal(_) => None,
-                                ListLiteralElement::Symbol(s) => Some((index, s)),
-                            })
-                    {
-                        environment.add_list_child(*binding, *child, index as u64);
-                    }
+                // Check whether the increments can be passed to the continuation.
+                CallType::LowLevel { op, .. } => match low_level_no_rc(&op) {
+                    // It should be safe to pass the increments to the continuation.
+                    RC::NoRc => alloc_let_with_continuation!(environment),
+                    // We probably should not pass the increments to the continuation.
+                    RC::Rc | RC::Uknown => {
+                        let incremented_symbols = environment.incremented_symbols.drain();
 
-                    alloc_let_with_continuation!(environment)
-                }
-                Expr::StructAtIndex {
-                    index, structure, ..
-                } => {
-                    environment.add_struct_child(*structure, *binding, *index);
-                    // alloc_let_with_continuation!(environment)
+                        let new_stmt = alloc_let_with_continuation!(environment);
 
-                    // TODO do we need to remove the indexed value to prevent it from being dropped sooner?
-                    // It will only be dropped sooner if the reference count is 1. Which can only happen if there is no increment before.
-                    // So we should be fine.
-                    alloc_let_with_continuation!(environment)
-                }
-                Expr::UnionAtIndex {
-                    structure,
-                    tag_id,
-                    union_layout: _,
-                    index,
-                } => {
-                    // TODO perhaps we need the union_layout later as well? if so, create a new function/map to store it.
-                    environment.add_union_child(*structure, *binding, *tag_id, *index);
-                    // Generated code might know the tag of the union without switching on it.
-                    // So if we UnionAtIndex, we must know the tag and we can use it to specialize the drop.
-                    environment.symbol_tag.insert(*structure, *tag_id);
-                    alloc_let_with_continuation!(environment)
-                }
-                Expr::UnionFieldPtrAtIndex {
-                    structure,
-                    tag_id,
-                    union_layout: _,
-                    index: _,
-                } => {
-                    // Generated code might know the tag of the union without switching on it.
-                    // So if we UnionFieldPtrAtIndex, we must know the tag and we can use it to specialize the drop.
-                    environment.symbol_tag.insert(*structure, *tag_id);
-                    alloc_let_with_continuation!(environment)
-                }
-                Expr::Reset { symbol, .. } | Expr::ResetRef { symbol, .. } => {
-                    let incremented_children = {
-                        let mut todo_children = bumpalo::vec![in arena; *symbol];
-                        let mut incremented_children = CountingMap::new();
-
-                        while let Some(child) = todo_children.pop() {
-                            if environment.incremented_symbols.pop(&child) {
-                                incremented_children.insert(child);
-                            } else {
-                                todo_children.extend(environment.get_children(&child));
-                            }
+                        // The new_environment might have inserted increments that were set to 0 before. We need to add th
+                        for (symbol, increment) in incremented_symbols.map.into_iter() {
+                            environment
+                                .incremented_symbols
+                                .insert_count(symbol, increment);
                         }
 
-                        incremented_children
-                    };
+                        new_stmt
+                    }
+                },
+                _ => {
+                    // Calls can modify the RC of the symbol.
+                    // If we move a increment of children after the function,
+                    // the function might deallocate the child before we can use it after the function.
+                    // If we move the decrement of the parent to before the function,
+                    // the parent might be deallocated before the function can use it.
+                    // Thus forget everything about any increments.
+
+                    let incremented_symbols = environment.incremented_symbols.drain();
 
                     let new_stmt = alloc_let_with_continuation!(environment);
 
                     // The new_environment might have inserted increments that were set to 0 before. We need to add th
-                    for (symbol, increment) in incremented_children.map.into_iter() {
+                    for (symbol, increment) in incremented_symbols.map.into_iter() {
                         environment
                             .incremented_symbols
                             .insert_count(symbol, increment);
@@ -248,24 +141,172 @@ fn specialize_drops_stmt<'a, 'i>(
 
                     new_stmt
                 }
-                Expr::Literal(literal) => {
-                    // literal ints are used to store the the index for lists.
-                    // Add it to the env so when we use it to index a list, we can use the index to specialize the drop.
-                    if let Literal::Int(i) = literal {
+            }
+        }
+        Stmt::Let(
+            binding,
+            expr @ Expr::Reset { symbol, .. } | expr @ Expr::ResetRef { symbol, .. },
+            layout,
+            continuation,
+        ) => {
+            let incremented_children = {
+                let mut todo_children = bumpalo::vec![in arena; *symbol];
+                let mut incremented_children = CountingMap::new();
+
+                while let Some(child) = todo_children.pop() {
+                    if environment.incremented_symbols.pop(&child) {
+                        incremented_children.insert(child);
+                    } else {
+                        todo_children.extend(environment.get_children(&child));
+                    }
+                }
+
+                incremented_children
+            };
+
+            macro_rules! alloc_let_with_continuation {
+                ($environment:expr) => {{
+                    let new_continuation = specialize_drops_stmt(
+                        arena,
+                        layout_interner,
+                        ident_ids,
+                        $environment,
+                        continuation,
+                    );
+                    arena.alloc(Stmt::Let(*binding, expr.clone(), *layout, new_continuation))
+                }};
+            }
+
+            let new_stmt = alloc_let_with_continuation!(environment);
+
+            // The new_environment might have inserted increments that were set to 0 before. We need to add th
+            for (symbol, increment) in incremented_children.map.into_iter() {
+                environment
+                    .incremented_symbols
+                    .insert_count(symbol, increment);
+            }
+
+            new_stmt
+        }
+        Stmt::Let(_, _, _, _) => {
+            use Expr::*;
+
+            // to prevent stack overflows, try to use an explicit stack to accumulate a bunch of
+            // Let statements. Call expressions require more logic and are never put on this stack
+            let mut stack = vec![];
+
+            let mut stmt = stmt;
+
+            while let Stmt::Let(binding, expr, layout, continuation) = stmt {
+                environment.add_symbol_layout(*binding, *layout);
+
+                // update the environment based on the expr
+                match expr {
+                    Call(_) | Reset { .. } | ResetRef { .. } => {
+                        // Expr::Call is tricky and we are lazy and handle it elsewhere. it
+                        // ends a chain of eligible Let statements.
+                        break;
+                    }
+                    Literal(crate::ir::Literal::Int(i)) => {
                         environment
                             .symbol_index
                             .insert(*binding, i128::from_ne_bytes(*i) as u64);
                     }
-                    alloc_let_with_continuation!(environment)
+                    Literal(_) => { /* do nothing */ }
+                    Tag {
+                        tag_id,
+                        arguments: children,
+                        ..
+                    } => {
+                        environment.symbol_tag.insert(*binding, *tag_id);
+
+                        for (index, child) in children.iter().enumerate() {
+                            environment.add_union_child(*binding, *child, *tag_id, index as u64);
+                        }
+                    }
+                    Struct(children) => {
+                        for (index, child) in children.iter().enumerate() {
+                            environment.add_struct_child(*binding, *child, index as u64);
+                        }
+                    }
+                    StructAtIndex {
+                        index, structure, ..
+                    } => {
+                        environment.add_struct_child(*structure, *binding, *index);
+
+                        // TODO do we need to remove the indexed value to prevent it from being dropped sooner?
+                        // It will only be dropped sooner if the reference count is 1. Which can only happen if there is no increment before.
+                        // So we should be fine.
+                    }
+                    UnionAtIndex {
+                        structure,
+                        tag_id,
+                        index,
+                        ..
+                    } => {
+                        // TODO perhaps we need the union_layout later as well? if so, create a new function/map to store it.
+                        environment.add_union_child(*structure, *binding, *tag_id, *index);
+                        // Generated code might know the tag of the union without switching on it.
+                        // So if we UnionAtIndex, we must know the tag and we can use it to specialize the drop.
+                        environment.symbol_tag.insert(*structure, *tag_id);
+                    }
+                    UnionFieldPtrAtIndex {
+                        structure, tag_id, ..
+                    } => {
+                        // Generated code might know the tag of the union without switching on it.
+                        // So if we UnionFieldPtrAtIndex, we must know the tag and we can use it to specialize the drop.
+                        environment.symbol_tag.insert(*structure, *tag_id);
+                    }
+                    Array {
+                        elems: children, ..
+                    } => {
+                        let it =
+                            children
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(index, child)| match child {
+                                    ListLiteralElement::Literal(_) => None,
+                                    ListLiteralElement::Symbol(s) => Some((index, s)),
+                                });
+
+                        for (index, child) in it {
+                            environment.add_list_child(*binding, *child, index as u64);
+                        }
+                    }
+                    ErasedMake { value, callee: _ } => {
+                        if let Some(value) = value {
+                            environment.add_struct_child(*binding, *value, 0);
+                        }
+                    }
+                    ErasedLoad { symbol, field } => {
+                        match field {
+                            ErasedField::Value => {
+                                environment.add_struct_child(*symbol, *binding, 0);
+                            }
+                            ErasedField::Callee | ErasedField::ValuePtr => {
+                                // nothing to own
+                            }
+                        }
+                    }
+
+                    RuntimeErrorFunction(_)
+                    | FunctionPointer { .. }
+                    | GetTagId { .. }
+                    | EmptyArray
+                    | NullPointer => { /* do nothing */ }
                 }
-                Expr::RuntimeErrorFunction(_)
-                | Expr::NullPointer
-                | Expr::GetTagId { .. }
-                | Expr::EmptyArray => {
-                    // Does nothing relevant to drop specialization. So we can just continue.
-                    alloc_let_with_continuation!(environment)
-                }
+
+                // now store the let binding for later
+                stack.push((*binding, expr.clone(), *layout));
+
+                // and "recurse" down the statement chain
+                stmt = continuation;
             }
+
+            stack.into_iter().rev().fold(
+                specialize_drops_stmt(arena, layout_interner, ident_ids, environment, stmt),
+                |acc, (binding, expr, layout)| arena.alloc(Stmt::Let(binding, expr, layout, acc)),
+            )
         }
         Stmt::Switch {
             cond_symbol,
@@ -1617,9 +1658,10 @@ fn low_level_no_rc(lowlevel: &LowLevel) -> RC {
         // only inserted for internal purposes. RC should not touch it
         PtrStore => RC::NoRc,
         PtrLoad => RC::NoRc,
+        PtrCast => RC::NoRc,
         Alloca => RC::NoRc,
 
-        PtrClearTagId | PtrCast | RefCountIncRcPtr | RefCountDecRcPtr | RefCountIncDataPtr
+        PtrClearTagId | RefCountIncRcPtr | RefCountDecRcPtr | RefCountIncDataPtr
         | RefCountDecDataPtr | RefCountIsUnique => {
             unreachable!("Only inserted *after* borrow checking: {:?}", lowlevel);
         }

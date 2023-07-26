@@ -670,6 +670,7 @@ impl<'a> TrmcEnv<'a> {
                 // because we do not allow polymorphic recursion, this is the only constraint
                 name == lambda_name
             }
+            CallType::ByPointer { .. } => false,
             CallType::Foreign { .. } | CallType::LowLevel { .. } | CallType::HigherOrder(_) => {
                 false
             }
@@ -814,6 +815,7 @@ impl<'a> TrmcEnv<'a> {
             host_exposed_layouts: proc.host_exposed_layouts.clone(),
             #[cfg(not(PERCEUS_RC))]
             must_own_arguments: proc.must_own_arguments,
+            is_erased: proc.is_erased,
         }
     }
 
@@ -1098,7 +1100,7 @@ fn expr_contains_symbol(expr: &Expr, needle: Symbol) -> bool {
             Some(ru) => ru.symbol == needle || arguments.contains(&needle),
         },
         Expr::Struct(fields) => fields.contains(&needle),
-        Expr::NullPointer => false,
+        Expr::NullPointer | Expr::FunctionPointer { .. } => false,
         Expr::StructAtIndex { structure, .. }
         | Expr::GetTagId { structure, .. }
         | Expr::UnionAtIndex { structure, .. }
@@ -1110,6 +1112,10 @@ fn expr_contains_symbol(expr: &Expr, needle: Symbol) -> bool {
         Expr::EmptyArray => false,
         Expr::Reset { symbol, .. } | Expr::ResetRef { symbol, .. } => needle == *symbol,
         Expr::RuntimeErrorFunction(_) => false,
+        Expr::ErasedMake { value, callee } => {
+            value.map(|v| v == needle).unwrap_or(false) || needle == *callee
+        }
+        Expr::ErasedLoad { symbol, field: _ } => needle == *symbol,
     }
 }
 

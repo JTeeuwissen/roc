@@ -446,6 +446,7 @@ fn build_exposed_proc<'a, B: Backend<'a>>(backend: &mut B, proc: &Proc<'a>) -> P
         #[cfg(not(PERCEUS_RC))]
         must_own_arguments: false,
         host_exposed_layouts: roc_mono::ir::HostExposedLayouts::NotHostExposed,
+        is_erased: proc.is_erased,
     }
 }
 
@@ -529,6 +530,7 @@ fn build_exposed_generic_proc<'a, B: Backend<'a>>(backend: &mut B, proc: &Proc<'
         #[cfg(not(PERCEUS_RC))]
         must_own_arguments: false,
         host_exposed_layouts: roc_mono::ir::HostExposedLayouts::NotHostExposed,
+        is_erased: proc.is_erased,
     }
 }
 

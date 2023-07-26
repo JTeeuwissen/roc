@@ -413,6 +413,9 @@ fn insert_reset<'a>(
             | RuntimeErrorFunction(_) => break,
 
             ResetRef { .. } => unreachable!("ResetRef is not used for the old style RC."),
+            ErasedMake { value, callee } => todo!(),
+            ErasedLoad { symbol, field } => todo!(),
+            FunctionPointer { lambda_name } => todo!(),
         }
     }
 
@@ -961,6 +964,9 @@ fn has_live_var_expr<'a>(expr: &'a Expr<'a>, needle: Symbol) -> bool {
         Expr::Reset { symbol, .. } => needle == *symbol,
         Expr::RuntimeErrorFunction(_) => false,
         Expr::ResetRef { .. } => unreachable!("ResetRef is not used for the old style RC."),
+        Expr::ErasedMake { value, callee } => todo!(),
+        Expr::ErasedLoad { symbol, field } => todo!(),
+        Expr::FunctionPointer { lambda_name } => todo!(),
     }
 }
 

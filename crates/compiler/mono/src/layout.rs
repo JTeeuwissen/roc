@@ -2862,6 +2862,27 @@ impl<'a> LayoutRepr<'a> {
         }
     }
 
+    pub fn is_runtime_refcounted<I>(&self, interner: &I) -> bool
+    where
+        I: LayoutInterner<'a>,
+    {
+        use self::Builtin::*;
+        use LayoutRepr::*;
+
+        match self {
+            Union(UnionLayout::NonRecursive(_)) => false,
+            Union(_) => true,
+            RecursivePointer(_) => true,
+            Builtin(List(_)) | Builtin(Str) => true,
+
+            Erased(_) => true,
+
+            LambdaSet(lambda_set) => interner.is_refcounted(lambda_set.runtime_representation()),
+
+            _ => false,
+        }
+    }
+
     pub fn is_nullable(&self) -> bool {
         use LayoutRepr::*;
 

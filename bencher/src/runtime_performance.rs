@@ -335,6 +335,12 @@ const BENCHMARKS: [Benchmark; 5] = [
         koka_path: "koka/rbtree-ck.kk",
         haskell_path: "haskell/rbtree-ck.hs",
     },
+    // Benchmark {
+    //     name: "Fib",
+    //     roc_path: "roc/Fib.roc",
+    //     koka_path: "",
+    //     haskell_path: "",
+    // },
 ];
 
 struct Benchmark<'a> {
